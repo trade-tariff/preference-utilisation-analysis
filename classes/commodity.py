@@ -18,15 +18,11 @@ class Commodity(object):
         
     def cleanse_description(self):
         if self.description is None:
-            self.description = self.get_last_valid_description()
-            if self.description is None:
-                self.description = g.app.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS
+            self.description = g.app.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS
         else:
             self.description = self.description.strip()
             if self.description == "":
-                self.description = self.get_last_valid_description()
-                if self.description is None:
-                    self.description = g.app.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS
+                self.description = g.app.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS
 
         self.description = self.description.replace('"', "'")
         self.description = re.sub(r"<br>",  " ", self.description)

@@ -25,6 +25,7 @@ class Application(object):
         self.message_string = ""
         load_dotenv('.env')
         self.DATABASE = os.getenv('DATABASE_UK')
+        self.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS = os.getenv('PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS')
 
         # Check whether UK or XI
         if ("dest" not in sys.argv[0]):
