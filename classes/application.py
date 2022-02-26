@@ -18,6 +18,8 @@ from classes.measure import Measure
 from classes.measure_component import MeasureComponent
 from classes.measure_condition import MeasureCondition
 from classes.measure_excluded_geographical_area import MeasureExcludedGeographicalArea
+from classes.aws_bucket import AwsBucket
+from classes.sendgrid_mailer import SendgridMailer
 
 
 class Application(object):
@@ -26,21 +28,24 @@ class Application(object):
         load_dotenv('.env')
         self.DATABASE = os.getenv('DATABASE_UK')
         self.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS = os.getenv('PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS')
+        self.write_to_aws = int(os.getenv('WRITE_TO_AWS'))
 
-        # Check whether UK or XI
-        if ("dest" not in sys.argv[0]):
-            self.get_scope()
-        else:
-            self.scope = "uk"
+        if "testmail" not in sys.argv[0]:
+            # Check whether UK or XI
+            if ("dest" not in sys.argv[0]):
+                self.get_scope()
+            else:
+                self.scope = "uk"
 
-        # Date of the report
-        self.get_date()
-        self.get_folders()
-        self.get_process_scope()
-        self.get_filename()
+            # Date of the report
+            self.get_date()
+            self.get_folders()
+            self.get_process_scope()
+            self.get_filename()
         
     def get_filename(self):
-        self.filename = os.path.join(self.dated_folder, "tariff_data_extract_{dt}.xlsx".format(dt = self.SNAPSHOT_DATE))
+        self.file_only = "preference_utilisation_analysis_{dt}.xlsx".format(dt = self.SNAPSHOT_DATE)
+        self.filename = os.path.join(self.dated_folder, self.file_only)
         
     def create_preference_utilisation_analysis(self):
         self.get_reference_data()
@@ -146,6 +151,22 @@ class Application(object):
         self.worksheet.autofilter('A1:Y' + str(self.row_count))
         self.workbook.close()
         self.end_timer("Saving file")
+        self.load_and_mail()
+        
+    def load_and_mail(self):
+        my_file = os.path.join(os.getcwd(), "_export", self.SNAPSHOT_DATE, self.file_only)
+        aws_path = "preference_utilisation_analysis/" + self.file_only
+
+        # Load to AWS
+        url = self.load_to_aws("Loading file " + self.SNAPSHOT_DATE, my_file, aws_path)
+
+        # Send the email
+        if url is not None:
+            subject = "The preference utilisation analysis file for " + self.SNAPSHOT_DATE
+            content = "<p>Hello</p><p>Preference utilisation analysis file for " + self.SNAPSHOT_DATE + \
+                " has been uploaded to this location:</p><p>" + url + "</p><p>Thank you.</p>"
+            attachment_list = []
+            self.send_email_message(subject, content, attachment_list)
         
     def get_quota_status(self):
         for m in self.measures:
@@ -499,23 +520,23 @@ class Application(object):
         self.month2 = date_time_obj.strftime("%m").lower()
         self.day = date_time_obj.strftime("%d")
 
-        date_folder = self.year + "-" + self.month2 + "-" + self.day
-        self.dated_folder = os.path.join(self.export_folder, date_folder)
+        self.date_string = self.year + "-" + self.month2 + "-" + self.day
+        self.dated_folder = os.path.join(self.export_folder, self.date_string)
         os.makedirs(self.dated_folder, exist_ok=True)
 
         # Under the date-specific folder, also make a scope (UK/XI) folder
-        self.scope_folder = os.path.join(self.dated_folder, self.scope)
-        os.makedirs(self.scope_folder, exist_ok=True)
+        # self.scope_folder = os.path.join(self.dated_folder, self.scope)
+        # os.makedirs(self.scope_folder, exist_ok=True)
 
         # Finally, make the destination folders
-        self.csv_folder = os.path.join(self.scope_folder, "csv")
-        self.excel_folder = os.path.join(self.scope_folder, "csv")
-        self.log_folder = os.path.join(self.scope_folder, "logs")
-        self.log_filename = os.path.join(self.log_folder, "etf_creation_log.txt")
+        # self.csv_folder = os.path.join(self.scope_folder, "csv")
+        # self.excel_folder = os.path.join(self.scope_folder, "csv")
+        # self.log_folder = os.path.join(self.scope_folder, "logs")
+        # self.log_filename = os.path.join(self.log_folder, "etf_creation_log.txt")
 
-        os.makedirs(self.csv_folder, exist_ok=True)
-        os.makedirs(self.excel_folder, exist_ok=True)
-        os.makedirs(self.log_folder, exist_ok=True)
+        # os.makedirs(self.csv_folder, exist_ok=True)
+        # os.makedirs(self.excel_folder, exist_ok=True)
+        # os.makedirs(self.log_folder, exist_ok=True)
 
     def get_date(self):
         if len(sys.argv) > 4:
@@ -821,6 +842,23 @@ class Application(object):
                 commodity.number_indents = -1
 
         self.end_timer("Rebasing chapters")
+
+    def load_to_aws(self, msg, file, aws_path):
+        if self.write_to_aws == 1:
+            print(msg)
+            bucket = AwsBucket()
+            ret = bucket.upload_file(file, aws_path)
+            return ret
+        else:
+            return None
+
+    def send_email_message(self, subject, content, attachment_list):
+        self.send_mail = int(os.getenv('SEND_MAIL'))
+        if self.send_mail == 0:
+            return
+        s = SendgridMailer(subject, content, attachment_list)
+        s.send()
+
 
     def start_timer(self, msg):
         self.tic = time.perf_counter()
