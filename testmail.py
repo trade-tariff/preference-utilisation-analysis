@@ -3,14 +3,14 @@ import os
 
 file = "test.txt"
 msg = "Message"
-aws_path = "preference_utilisation_analysis"
+aws_path = g.app.MEASURES_FILENAME
 
-for i in range(1, 3):
+for i in range(1, 13):
     my_month = str(i).rjust(2, "0")
-    date_string = "2022-" + my_month + "-01"
-    filename = "tariff_data_extract_" + date_string + ".xlsx"
+    date_string = "2021-" + my_month + "-01"
+    filename = g.app.MEASURES_FILENAME + "_" + date_string + ".xlsx"
     my_file = os.path.join(os.getcwd(), "_export", date_string, filename)
-    aws_path = "preference_utilisation_analysis/" + filename
+    aws_path = g.app.MEASURES_FILENAME + "/" + filename
 
     # Load to AWS
     url = g.app.load_to_aws("Loading file " + date_string, my_file, aws_path)

@@ -18,6 +18,7 @@ from classes.measure import Measure
 from classes.measure_component import MeasureComponent
 from classes.measure_condition import MeasureCondition
 from classes.measure_excluded_geographical_area import MeasureExcludedGeographicalArea
+from classes.geographical_area_member import GeographicalAreaMember
 from classes.aws_bucket import AwsBucket
 from classes.sendgrid_mailer import SendgridMailer
 
@@ -26,7 +27,11 @@ class Application(object):
     def __init__(self):
         self.message_string = ""
         load_dotenv('.env')
+        
         self.DATABASE = os.getenv('DATABASE_UK')
+        self.MEASURES_FILENAME = os.getenv('MEASURES_FILENAME')
+        self.GEO_FILENAME = os.getenv('GEO_FILENAME')
+        
         self.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS = os.getenv('PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS')
         self.write_to_aws = int(os.getenv('WRITE_TO_AWS'))
 
@@ -42,13 +47,17 @@ class Application(object):
             self.get_folders()
             self.get_process_scope()
             self.get_filename()
-        
+
     def get_filename(self):
-        self.file_only = "preference_utilisation_analysis_{dt}.xlsx".format(dt = self.SNAPSHOT_DATE)
+        self.file_only = self.MEASURES_FILENAME + "_{dt}.xlsx".format(dt=self.SNAPSHOT_DATE)
         self.filename = os.path.join(self.dated_folder, self.file_only)
-        
+
+        self.geo_file_only = "trade_groups_{dt}.xlsx".format(dt=self.SNAPSHOT_DATE)
+        self.geo_filename = os.path.join(self.dated_folder, self.geo_file_only)
+
     def create_preference_utilisation_analysis(self):
         self.get_reference_data()
+        self.write_geographical_area_members()
         self.get_quota_balances()
         self.get_quotas()
         self.assign_quota_balances()
@@ -57,7 +66,8 @@ class Application(object):
     def get_commodities(self):
         # Create the Excel document right at the start
         # Also write the table headers
-        self.workbook = xlsxwriter.Workbook(self.filename, {'strings_to_urls': False})
+        self.workbook = xlsxwriter.Workbook(
+            self.filename, {'strings_to_urls': False})
         self.bold = self.workbook.add_format({'bold': True})
         self.worksheet = self.workbook.add_worksheet(self.SNAPSHOT_DATE)
         fields = [
@@ -97,7 +107,8 @@ class Application(object):
 
         self.row_count = 1
         for i in range(self.start, self.end):
-            self.start_loop_timer("Creating data for commodity codes starting with " + str(i))
+            self.start_loop_timer(
+                "Creating data for commodity codes starting with " + str(i))
             self.commodities = []
             self.get_measure_components(i)
             self.get_measure_conditions(i)
@@ -139,12 +150,12 @@ class Application(object):
                 commodity.significant_digits = int(row[10])
                 commodity.cleanse_description()
                 self.commodities.append(commodity)
-                    
+
             self.assign_measures_to_commodities()
             self.build_commodity_hierarchy()
             self.apply_commodity_inheritance()
             self.extract_data()
-            
+
         # Actions to be completed after the end of the last iteration
         self.start_timer("Saving file")
         self.worksheet.freeze_panes(1, 0)
@@ -152,34 +163,42 @@ class Application(object):
         self.workbook.close()
         self.end_timer("Saving file")
         self.load_and_mail()
-        
-    def load_and_mail(self):
-        my_file = os.path.join(os.getcwd(), "_export", self.SNAPSHOT_DATE, self.file_only)
-        aws_path = "preference_utilisation_analysis/" + self.file_only
 
-        # Load to AWS
-        url = self.load_to_aws("Loading file " + self.SNAPSHOT_DATE, my_file, aws_path)
+    def load_and_mail(self):
+        # Load to AWS (main measures file)
+        my_file = os.path.join(os.getcwd(), "_export",self.SNAPSHOT_DATE, self.file_only)
+        aws_path = self.MEASURES_FILENAME + "/" + self.file_only
+        url = self.load_to_aws("Loading preference utilisation analysis file " + self.SNAPSHOT_DATE, my_file, aws_path)
+
+        # Load to AWS (members file)
+        my_file = os.path.join(os.getcwd(), "_export",self.SNAPSHOT_DATE, self.geo_file_only)
+        aws_path = self.GEO_FILENAME + "/" + self.geo_file_only
+        url2 = self.load_to_aws("Loading trade groups file " + self.SNAPSHOT_DATE, my_file, aws_path)
 
         # Send the email
         if url is not None:
-            subject = "The preference utilisation analysis file for " + self.SNAPSHOT_DATE
-            content = "<p>Hello</p><p>Preference utilisation analysis file for " + self.SNAPSHOT_DATE + \
-                " has been uploaded to this location:</p><p>" + url + "</p><p>Thank you.</p>"
+            subject = "Preference utilisation analysis file for " + self.SNAPSHOT_DATE
+            content = "<p>Hello,</p>"
+            content += "<p><b>Preference utilisation analysis file</b><br>"
+            content += "The preference utilisation analysis file for " + self.SNAPSHOT_DATE + " has been uploaded to this location:</p><p>" + url + "</p>"
+            
+            content += "<p><b>Trade groups file</b><br>"
+            content += "The trade groups file for " + self.SNAPSHOT_DATE + " has been uploaded to this location:</p><p>" + url2 + "</p>"
+            content += "<p>Thank you.</p>"
             attachment_list = []
             self.send_email_message(subject, content, attachment_list)
-        
+
     def get_quota_status(self):
         for m in self.measures:
             m.get_quota_status()
-    
+
     def apply_commodity_inheritance(self):
         self.start_timer("Applying inheritance")
         for commodity in self.commodities:
             commodity.apply_commodity_inheritance()
             commodity.sort_measures()
         self.end_timer("Applying inheritance")
-        
-        
+
     def get_footnotes(self, i):
         self.start_timer("Getting footnotes")
         self.footnotes = []
@@ -200,7 +219,6 @@ class Application(object):
             footnote.footnote = row[1]
             self.footnotes.append(footnote)
 
-        
         self.footnotes.sort(key=lambda x: x.measure_sid, reverse=False)
         self.end_timer("Getting footnotes")
 
@@ -213,36 +231,61 @@ class Application(object):
             if commodity.leaf == 1:
                 for measure in commodity.measures:
                     # Index
-                    self.worksheet.write(self.row_count, 1, str(self.row_count))
-                    
+                    self.worksheet.write(
+                        self.row_count, 1, str(self.row_count))
+
                     # Comm code-related fields
-                    self.worksheet.write(self.row_count, 1, str(commodity.goods_nomenclature_sid))
-                    self.worksheet.write(self.row_count, 2, commodity.goods_nomenclature_item_id)
-                    self.worksheet.write(self.row_count, 3, str(commodity.number_indents))
-                    self.worksheet.write(self.row_count, 4, commodity.description)
-                    
+                    self.worksheet.write(self.row_count, 1, str(
+                        commodity.goods_nomenclature_sid))
+                    self.worksheet.write(
+                        self.row_count, 2, commodity.goods_nomenclature_item_id)
+                    self.worksheet.write(
+                        self.row_count, 3, str(commodity.number_indents))
+                    self.worksheet.write(
+                        self.row_count, 4, commodity.description)
+
                     # Measure-related fields
-                    self.worksheet.write(self.row_count, 5, str(measure.measure_sid))
-                    self.worksheet.write(self.row_count, 6, measure.measure_type_id)
-                    self.worksheet.write(self.row_count, 7, measure.measure_type_description)
-                    self.worksheet.write(self.row_count, 8, measure.additional_code)
-                    self.worksheet.write(self.row_count, 9, measure.additional_code_description)
-                    self.worksheet.write(self.row_count, 10, measure.english_duty_string)
-                    self.worksheet.write(self.row_count, 11, measure.validity_start_date)
-                    self.worksheet.write(self.row_count, 12, measure.validity_end_date)
-                    self.worksheet.write(self.row_count, 13, f.process_null(measure.reduction_indicator))
-                    self.worksheet.write(self.row_count, 14, measure.footnotes_string)
-                    self.worksheet.write(self.row_count, 15, measure.condition_string)
-                    self.worksheet.write(self.row_count, 16, str(measure.geographical_area_sid))
-                    self.worksheet.write(self.row_count, 17, measure.geographical_area_id)
-                    self.worksheet.write(self.row_count, 18, measure.geographical_area_description)
-                    self.worksheet.write(self.row_count, 19, measure.measure_excluded_geographical_areas_string)
-                    self.worksheet.write(self.row_count, 20, measure.measure_excluded_geographical_area_descriptions_string)
-                    self.worksheet.write(self.row_count, 21, measure.ordernumber)
-                    self.worksheet.write(self.row_count, 22, measure.quota_status)
-                    self.worksheet.write(self.row_count, 23, measure.measure_generating_regulation_id)
-                    self.worksheet.write(self.row_count, 24, measure.regulation_url)
-                    
+                    self.worksheet.write(
+                        self.row_count, 5, str(measure.measure_sid))
+                    self.worksheet.write(
+                        self.row_count, 6, measure.measure_type_id)
+                    self.worksheet.write(
+                        self.row_count, 7, measure.measure_type_description)
+                    self.worksheet.write(
+                        self.row_count, 8, measure.additional_code)
+                    self.worksheet.write(
+                        self.row_count, 9, measure.additional_code_description)
+                    self.worksheet.write(
+                        self.row_count, 10, measure.english_duty_string)
+                    self.worksheet.write(
+                        self.row_count, 11, measure.validity_start_date)
+                    self.worksheet.write(
+                        self.row_count, 12, measure.validity_end_date)
+                    self.worksheet.write(self.row_count, 13, f.process_null(
+                        measure.reduction_indicator))
+                    self.worksheet.write(
+                        self.row_count, 14, measure.footnotes_string)
+                    self.worksheet.write(
+                        self.row_count, 15, measure.condition_string)
+                    self.worksheet.write(self.row_count, 16, str(
+                        measure.geographical_area_sid))
+                    self.worksheet.write(
+                        self.row_count, 17, measure.geographical_area_id)
+                    self.worksheet.write(
+                        self.row_count, 18, measure.geographical_area_description)
+                    self.worksheet.write(
+                        self.row_count, 19, measure.measure_excluded_geographical_areas_string)
+                    self.worksheet.write(
+                        self.row_count, 20, measure.measure_excluded_geographical_area_descriptions_string)
+                    self.worksheet.write(
+                        self.row_count, 21, measure.ordernumber)
+                    self.worksheet.write(
+                        self.row_count, 22, measure.quota_status)
+                    self.worksheet.write(
+                        self.row_count, 23, measure.measure_generating_regulation_id)
+                    self.worksheet.write(
+                        self.row_count, 24, measure.regulation_url)
+
                     self.row_count += 1
 
     def assign_measures_to_commodities(self):
@@ -268,12 +311,16 @@ class Application(object):
 
     def sort_measures(self):
         self.start_timer("Sorting measures")
-        self.measures.sort(key=lambda x: (x.additional_code_id is None, x.additional_code_id), reverse=False)
-        self.measures.sort(key=lambda x: (x.additional_code_type_id is None, x.additional_code_type_id), reverse=False)
-        self.measures.sort(key=lambda x: (x.ordernumber is None, x.ordernumber), reverse=False)
+        self.measures.sort(key=lambda x: (
+            x.additional_code_id is None, x.additional_code_id), reverse=False)
+        self.measures.sort(key=lambda x: (
+            x.additional_code_type_id is None, x.additional_code_type_id), reverse=False)
+        self.measures.sort(key=lambda x: (
+            x.ordernumber is None, x.ordernumber), reverse=False)
         self.measures.sort(key=lambda x: x.geographical_area_id, reverse=False)
         self.measures.sort(key=lambda x: x.measure_type_id, reverse=False)
-        self.measures.sort(key=lambda x: x.goods_nomenclature_item_id, reverse=False)
+        self.measures.sort(
+            key=lambda x: x.goods_nomenclature_item_id, reverse=False)
         self.end_timer("Sorting measures")
 
     def get_measures(self, iteration):
@@ -292,7 +339,7 @@ class Application(object):
         and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
         and m.measure_type_id not in ('109', '110', '111')
         order by measure_sid;"""
-        
+
         d = Database()
         rows = d.run_query(sql.replace("\n", ""))
         for row in rows:
@@ -347,20 +394,23 @@ class Application(object):
 
     def assign_measure_excluded_geographical_areas(self):
         # Assign measure exclusions to measures
-        self.start_timer("Assigning measure excluded geographical areas to measures")
+        self.start_timer(
+            "Assigning measure excluded geographical areas to measures")
         start_point = 0
         for measure_excluded_geographical_area in self.measure_excluded_geographical_areas:
             for i in range(start_point, len(self.measures)):
                 measure = self.measures[i]
                 if measure.measure_sid == measure_excluded_geographical_area.measure_sid:
                     start_point = i
-                    measure.measure_excluded_geographical_areas.append(measure_excluded_geographical_area)
+                    measure.measure_excluded_geographical_areas.append(
+                        measure_excluded_geographical_area)
                     break
 
         for measure in self.measures:
             measure.get_geographical_area_exclusions()
-        
-        self.end_timer("Assigning measure excluded geographical areas to measures")
+
+        self.end_timer(
+            "Assigning measure excluded geographical areas to measures")
 
     def assign_measure_conditions_to_measures(self):
         # This is used for working out if there is a chance that the heading is ex head
@@ -479,7 +529,8 @@ class Application(object):
             measure_excluded_geographical_area.geographical_area_sid = row[2]
             measure_excluded_geographical_area.get_description()
 
-            self.measure_excluded_geographical_areas.append(measure_excluded_geographical_area)
+            self.measure_excluded_geographical_areas.append(
+                measure_excluded_geographical_area)
         self.end_timer("Getting measure excluded geographical areas")
 
     def build_commodity_hierarchy(self):
@@ -494,14 +545,14 @@ class Application(object):
                 commodity2 = self.commodities[loop2]
                 if commodity2.number_indents < current_indent:
                     commodity.hierarchy.append(commodity2)
-                    commodity.hierarchy_sids.append(commodity2.goods_nomenclature_sid)
+                    commodity.hierarchy_sids.append(
+                        commodity2.goods_nomenclature_sid)
                     current_indent = commodity2.number_indents
                 if commodity2.number_indents == -1:
                     break
             commodity.hierarchy.reverse()
 
         self.end_timer("Building commodity hierarchy")
-
 
         self.end_timer("Building commodity hierarchy")
 
@@ -545,9 +596,11 @@ class Application(object):
             try:
                 datetime.strptime(d, date_format)
                 self.SNAPSHOT_DATE = d
-                self.COMPARISON_DATE = datetime.strptime(d, '%Y-%m-%d') - timedelta(days=7)
+                self.COMPARISON_DATE = datetime.strptime(
+                    d, '%Y-%m-%d') - timedelta(days=7)
             except ValueError:
-                print("This is the incorrect date string format. It should be YYYY-MM-DD")
+                print(
+                    "This is the incorrect date string format. It should be YYYY-MM-DD")
                 sys.exit()
         else:
             d = datetime.now()
@@ -589,6 +642,7 @@ class Application(object):
     def get_reference_data(self):
         self.get_measure_types_friendly()
         self.get_geographical_areas_friendly()
+        self.get_geographical_area_members()
         self.get_additional_codes_friendly()
         self.get_base_regulations()
 
@@ -606,18 +660,6 @@ class Application(object):
             self.measure_types_friendly[row[0]] = row[1]
 
     def get_additional_codes_friendly(self):
-        # sql = """SELECT acd1.additional_code_sid,
-        # acd1.additional_code_type_id::text || acd1.additional_code::text AS code,
-        # acd1.description
-        # FROM additional_code_descriptions acd1,
-        # additional_codes ac
-        # where ac.validity_end_date is null
-        # and ac.additional_code_sid = acd1.additional_code_sid AND (acd1.oid IN ( SELECT max(acd2.oid) AS max
-        # FROM additional_code_descriptions acd2
-        # WHERE acd1.additional_code_type_id::text = acd2.additional_code_type_id::text AND acd1.additional_code::text = acd2.additional_code::text))
-        # ORDER BY (acd1.additional_code_type_id::text || acd1.additional_code::text);
-        # """
-        
         sql = """
         select distinct on (ac.additional_code_sid)
         ac.additional_code_sid, acd.description 
@@ -646,7 +688,7 @@ class Application(object):
             information_text = f.null_to_string(row[1])
             information_text = f.process_url(information_text)
             self.base_regulations[base_regulation_id] = information_text
-    
+
     def get_geographical_areas_friendly(self):
         sql = """SELECT g.geographical_area_sid,
         geo1.geographical_area_id,
@@ -665,6 +707,70 @@ class Application(object):
         for row in rows:
             description = f.null_to_string(row[2]).replace(",", "")
             self.geographical_areas_friendly[row[0]] = description
+
+    def get_geographical_area_members(self):
+        self.start_timer("Getting geographical area members")
+        sql = """
+        with cta_ga as (
+            select distinct on (ga.geographical_area_sid)
+            ga.geographical_area_sid, ga.geographical_area_id, description 
+            from geographical_area_descriptions gad, geographical_area_description_periods gadp, geographical_areas ga
+            where ga.geographical_area_sid = gad.geographical_area_sid 
+            and gad.geographical_area_description_period_sid = gadp.geographical_area_description_period_sid 
+            and gad.description is not null
+            and gadp.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
+            and (gadp.validity_end_date >= '""" + self.SNAPSHOT_DATE + """' or gadp.validity_end_date is null)
+            and ga.validity_start_date  <= '""" + self.SNAPSHOT_DATE + """'
+            and (ga.validity_end_date >= '""" + self.SNAPSHOT_DATE + """' or ga.validity_end_date is null)
+            order by ga.geographical_area_sid, ga.geographical_area_id, gad.description, gadp.validity_start_date desc
+        )
+        select parent.geographical_area_id, parent.description,
+        child.geographical_area_id, child.description 
+        from geographical_area_memberships gam, cta_ga as parent, cta_ga as child
+        where gam.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
+        and gam.geographical_area_group_sid = parent.geographical_area_sid
+        and gam.geographical_area_sid = child.geographical_area_sid
+        and (gam.validity_end_date is null or gam.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
+        order by 1, 3;
+        """
+        self.geographical_area_members = []
+        d = Database()
+        rows = d.run_query(sql)
+        for row in rows:
+            gam = GeographicalAreaMember(row[0], row[1], row[2], row[3])
+            self.geographical_area_members.append(gam)
+
+        self.end_timer("Getting geographical area members")
+
+    def write_geographical_area_members(self):
+        self.workbook = xlsxwriter.Workbook(self.geo_filename, {'strings_to_urls': False})
+        self.bold = self.workbook.add_format({'bold': True})
+        self.worksheet = self.workbook.add_worksheet(self.SNAPSHOT_DATE)
+
+        fields = [
+            ["parent_id", 20],
+            ["parent_description", 75],
+            ["child_id", 20],
+            ["child_description", 75]
+        ]
+        col = 0
+        for field, column_width in (fields):
+            column_string = chr(col + 65) + ":" + chr(col + 65)
+            self.worksheet.set_column(column_string, column_width)
+            self.worksheet.write(0, col, field, self.bold)
+            col += 1
+
+        self.row_count = 1
+        for ga in self.geographical_area_members:
+            self.worksheet.write(self.row_count, 0, ga.parent_id)
+            self.worksheet.write(self.row_count, 1, ga.parent_description)
+            self.worksheet.write(self.row_count, 2, ga.child_id)
+            self.worksheet.write(self.row_count, 3, ga.child_description)
+            self.row_count += 1
+
+        self.worksheet.freeze_panes(1, 0)
+        self.worksheet.autofilter('A1:D' + str(self.row_count))
+        self.workbook.close()
 
     def get_quota_balances(self):
         self.quota_balances = []
@@ -685,22 +791,23 @@ class Application(object):
         d = Database()
         rows = d.run_query(sql)
         for row in rows:
-            qb = QuotaBalance(row[0], row[1], row[2], row[3], row[4], row[5], row[6])
+            qb = QuotaBalance(row[0], row[1], row[2],
+                              row[3], row[4], row[5], row[6])
             self.quota_balances.append(qb)
         self.end_timer("Getting quota balances")
-    
+
     def assign_quota_balances(self):
         self.start_timer("Assigning quota balances")
         for qd in self.quota_definitions:
             if qd.quota_order_number_id == "059124":
-            # if qd.quota_definition_sid == 20763:
+                # if qd.quota_definition_sid == 20763:
                 a = 1
             for qb in self.quota_balances:
                 if qb.quota_definition_sid == qd.quota_definition_sid:
                     qd.quota_balances.append(qb)
                     qd.quota_balance = qb.new_balance
         self.end_timer("Assigning quota balances")
-        
+
         # Firstly, get the volumes from the initial volume in the definitions table
         self.quota_order_numbers = {}
         for qd in self.quota_definitions:
@@ -715,7 +822,8 @@ class Application(object):
                 self.quota_order_numbers[qd.quota_order_number_id] = qd.quota_balance
 
     def get_quotas(self):
-        self.start_timer("Getting and writing all quota definitions for CSV export")
+        self.start_timer(
+            "Getting and writing all quota definitions for CSV export")
         self.quota_commodities = []
         sql = """
         select ordernumber, string_agg(distinct goods_nomenclature_item_id, '|' order by m.goods_nomenclature_item_id)
@@ -809,7 +917,7 @@ class Application(object):
             quota_definition.quota_type = row[8]
             quota_definition.origins = row[9]
             quota_definition.quota_definition_sid = row[10]
-            
+
             # Assign the exclusions to the definitions
             for exclusion in self.quota_exclusions:
                 if exclusion.quota_order_number_sid == quota_definition.quota_order_number_sid:
@@ -824,8 +932,8 @@ class Application(object):
 
             self.quota_definitions.append(quota_definition)
 
-
-        self.end_timer("Getting and writing all quota definitions for CSV export")
+        self.end_timer(
+            "Getting and writing all quota definitions for CSV export")
 
     def rebase_chapters(self):
         # Reset the indent of chapters to -1, so that they are
@@ -859,7 +967,6 @@ class Application(object):
         s = SendgridMailer(subject, content, attachment_list)
         s.send()
 
-
     def start_timer(self, msg):
         self.tic = time.perf_counter()
         # msg = msg.upper() + "\n - Starting"
@@ -869,7 +976,8 @@ class Application(object):
 
     def end_timer(self, msg):
         self.toc = time.perf_counter()
-        msg = " - Completed in " + "{:.1f}".format(self.toc - self.tic) + " seconds\n"
+        msg = " - Completed in " + \
+            "{:.1f}".format(self.toc - self.tic) + " seconds\n"
         print(msg)
         self.message_string += msg + "\n"
 
@@ -882,7 +990,8 @@ class Application(object):
 
     def end_loop_timer(self, msg):
         self.loop_toc = time.perf_counter()
-        msg = msg.upper() + " - Completed in " + "{:.1f}".format(self.loop_toc - self.loop_tic) + " seconds\n"
+        msg = msg.upper() + " - Completed in " + \
+            "{:.1f}".format(self.loop_toc - self.loop_tic) + " seconds\n"
         print(msg + "\n")
         self.message_string += msg + "\n"
 
