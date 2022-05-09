@@ -75,6 +75,10 @@ class MeasureComponent(object):
         elif self.duty_expression_id == "27": # Flour duty
             self.english_component_definition += " + FD"
 
+        elif self.duty_expression_id == "99": # Supplementary unit
+            self.english_component_definition = self.measurement_unit_code + self.measurement_unit_qualifier_code
+            a = 1
+
     def get_duty_expression_class(self):
         if self.duty_expression_id in ('01', '04', '19', '20'):
             self.duty_expression_class = "standard"

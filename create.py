@@ -1,3 +1,3 @@
 import classes.globals as g
 
-g.app.create_preference_utilisation_analysis()
+g.app.create_data_extract()

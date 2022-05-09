@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import json
 from pathlib2 import Path
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, date
@@ -25,13 +26,14 @@ from classes.sendgrid_mailer import SendgridMailer
 
 class Application(object):
     def __init__(self):
+        self.get_units()
         self.message_string = ""
         load_dotenv('.env')
-        
+
         self.DATABASE = os.getenv('DATABASE_UK')
         self.MEASURES_FILENAME = os.getenv('MEASURES_FILENAME')
         self.GEO_FILENAME = os.getenv('GEO_FILENAME')
-        
+
         self.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS = os.getenv('PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS')
         self.write_to_aws = int(os.getenv('WRITE_TO_AWS'))
 
@@ -48,6 +50,12 @@ class Application(object):
             self.get_process_scope()
             self.get_filename()
 
+    def get_units(self):
+        filename = os.path.join(os.getcwd(), "data", "units.json")
+        f = open(filename)
+        self.units = json.load(f)
+        a = 1
+    
     def get_filename(self):
         self.file_only = self.MEASURES_FILENAME + "_{dt}.xlsx".format(dt=self.SNAPSHOT_DATE)
         self.filename = os.path.join(self.dated_folder, self.file_only)
@@ -55,78 +63,107 @@ class Application(object):
         self.geo_file_only = "trade_groups_{dt}.xlsx".format(dt=self.SNAPSHOT_DATE)
         self.geo_filename = os.path.join(self.dated_folder, self.geo_file_only)
 
-    def create_preference_utilisation_analysis(self):
+    def create_data_extract(self):
         self.get_reference_data()
-        self.write_geographical_area_members()
-        self.get_quota_balances()
-        self.get_quotas()
-        self.assign_quota_balances()
+        # self.get_quota_balances()
+        # self.get_quotas()
+        # self.assign_quota_balances()
         self.get_commodities()
 
     def get_commodities(self):
         # Create the Excel document right at the start
         # Also write the table headers
-        self.workbook = xlsxwriter.Workbook(
-            self.filename, {'strings_to_urls': False})
+        self.workbook = xlsxwriter.Workbook(self.filename, {'strings_to_urls': False})
+
+        # Standard fields
+        self.standard = self.workbook.add_format({'bold': False})
+        self.standard.set_font_name("Times New Roman")
+        self.standard.set_font_size(10)
+
+        self.standard_right = self.workbook.add_format({'bold': False})
+        self.standard_right.set_font_name("Times New Roman")
+        self.standard_right.set_align("right")
+        self.standard_right.set_font_size(10)
+
+        self.standard_centred = self.workbook.add_format({'bold': False})
+        self.standard_centred.set_font_name("Times New Roman")
+        self.standard_centred.set_align("center")
+        self.standard_centred.set_font_size(10)
+
+        # Bold fields used for header row only
         self.bold = self.workbook.add_format({'bold': True})
+        self.bold.set_font_name("Times New Roman")
+        self.bold.set_font_size(10)
+
+        self.bold_right = self.workbook.add_format({'bold': True})
+        self.bold_right.set_font_name("Times New Roman")
+        self.bold_right.set_align("right")
+        self.bold_right.set_font_size(10)
+
+        self.bold_centred = self.workbook.add_format({'bold': True})
+        self.bold_centred.set_font_name("Times New Roman")
+        self.bold_centred.set_align("center")
+        self.bold_centred.set_font_size(10)
+
         self.worksheet = self.workbook.add_worksheet(self.SNAPSHOT_DATE)
+
         fields = [
-            ["trackedmodel_ptr_id", 20],
-            ["commodity__sid", 20],
-            ["commodity__code", 20],
-            ["commodity__indent", 20],
-            ["commodity__description", 50],
-            ["measure__sid", 20],
-            ["measure__type__id", 20],
-            ["measure__type__description", 20],
-            ["measure__additional_code__code", 20],
-            ["measure__additional_code__description", 20],
-            ["measure__duty_expression", 20],
-            ["measure__effective_start_date", 20],
-            ["measure__effective_end_date", 20],
-            ["measure_reduction_indicator", 20],
-            ["measure__footnotes", 20],
-            ["measure__conditions", 20],
-            ["measure__geographical_area__sid", 20],
-            ["measure__geographical_area__id", 20],
-            ["measure__geographical_area__description", 20],
-            ["measure__excluded_geographical_areas__ids", 20],
-            ["measure__excluded_geographical_areas__descriptions", 20],
-            ["measure__quota__order_number", 20],
-            ["measure__quota__available", 20],
-            ["measure__regulation__id", 20],
-            ["measure__regulation__url", 20]
+            ["CODE", 20, "bold"],
+            ["DESCRIPTION", 100, "bold"],
+            ["FROM", 20, "bold"],
+            ["TO", 20, "bold"],
+            ["DUTY", 40, "bold"],
+            ["VAT", 20, "bold_centred"],
+            ["Add", 10, "bold_centred"],
+            ["Pref", 10, "bold_centred"],
+            ["LIC", 10, "bold_centred"],
+            ["DPO", 10, "bold_centred"],
+            ["CAP", 10, "bold_centred"],
+            ["Quota", 10, "bold_centred"],
+            ["Excise", 10, "bold_centred"],
+            ["End", 10, "bold_centred"],
+            ["MM", 10, "bold_centred"],
+            ["Qty1", 10, "bold_centred"],
+            ["Qty2", 10, "bold_centred"],
+            ["Qty3", 10, "bold_centred"],
+            ["Qty1", 10, "bold_centred"],
+            ["Qty2", 10, "bold_centred"],
+            ["Qty3", 10, "bold_centred"]
         ]
 
         col = 0
-        for field, column_width in (fields):
+        for field, column_width, style in (fields):
             column_string = chr(col + 65) + ":" + chr(col + 65)
             self.worksheet.set_column(column_string, column_width)
-            self.worksheet.write(0, col, field, self.bold)
+            if style == "bold_right":
+                style = self.bold_right
+            elif style == "bold_centred":
+                style = self.bold_centred
+            else:
+                style = self.bold
+            self.worksheet.write(0, col, field, style)
             col += 1
 
         self.row_count = 1
         for i in range(self.start, self.end):
-            self.start_loop_timer(
-                "Creating data for commodity codes starting with " + str(i))
+            self.start_loop_timer("Creating data for commodity codes starting with " + str(i))
             self.commodities = []
             self.get_measure_components(i)
-            self.get_measure_conditions(i)
-            self.get_measure_excluded_geographical_areas(i)
+            # self.get_measure_conditions(i)
+            # self.get_measure_excluded_geographical_areas(i)
             self.get_measures(i)
-            # self.get_footnotes(i)
+
             self.assign_measure_components_to_measures()
-            self.assign_measure_conditions_to_measures()
-            # self.assign_footnotes_to_measures()
-            self.get_condition_strings()
-            self.assign_measure_excluded_geographical_areas()
-            self.get_quota_status()
+            # self.assign_measure_conditions_to_measures()
+            # self.get_condition_strings()
+            # self.assign_measure_excluded_geographical_areas()
+            # self.get_quota_status()
             self.sort_measures()
             self.create_measure_duties()
 
             iteration = str(i) + "%"
 
-            sql = """select goods_nomenclature_sid, goods_nomenclature_item_id, producline_suffix, 
+            sql = """select goods_nomenclature_sid, goods_nomenclature_item_id, producline_suffix,
             validity_start_date, validity_end_date, description, number_indents, chapter, node,
             leaf, significant_digits
             from utils.goods_nomenclature_export_new(%s, %s) order by 2, 3"""
@@ -142,8 +179,8 @@ class Application(object):
                 commodity.goods_nomenclature_item_id = row[1]
                 commodity.goods_nomenclature_sid = row[0]
                 commodity.productline_suffix = row[2]
-                commodity.validity_start_date = self.YYYYMMDD(row[3])
-                commodity.validity_end_date = self.YYYYMMDD(row[4])
+                commodity.validity_start_date = self.DDMMYYYY(row[3])
+                commodity.validity_end_date = self.DDMMYYYY(row[4])
                 commodity.description = row[5]
                 commodity.number_indents = int(row[6])
                 commodity.leaf = int(str(row[9]))
@@ -159,19 +196,19 @@ class Application(object):
         # Actions to be completed after the end of the last iteration
         self.start_timer("Saving file")
         self.worksheet.freeze_panes(1, 0)
-        self.worksheet.autofilter('A1:Y' + str(self.row_count))
+        self.worksheet.autofilter('A1:U' + str(self.row_count))
         self.workbook.close()
         self.end_timer("Saving file")
         self.load_and_mail()
 
     def load_and_mail(self):
         # Load to AWS (main measures file)
-        my_file = os.path.join(os.getcwd(), "_export",self.SNAPSHOT_DATE, self.file_only)
+        my_file = os.path.join(os.getcwd(), "_export", self.SNAPSHOT_DATE, self.file_only)
         aws_path = self.MEASURES_FILENAME + "/" + self.file_only
         url = self.load_to_aws("Loading preference utilisation analysis file " + self.SNAPSHOT_DATE, my_file, aws_path)
 
         # Load to AWS (members file)
-        my_file = os.path.join(os.getcwd(), "_export",self.SNAPSHOT_DATE, self.geo_file_only)
+        my_file = os.path.join(os.getcwd(), "_export", self.SNAPSHOT_DATE, self.geo_file_only)
         aws_path = self.GEO_FILENAME + "/" + self.geo_file_only
         url2 = self.load_to_aws("Loading trade groups file " + self.SNAPSHOT_DATE, my_file, aws_path)
 
@@ -181,7 +218,7 @@ class Application(object):
             content = "<p>Hello,</p>"
             content += "<p><b>Preference utilisation analysis file</b><br>"
             content += "The preference utilisation analysis file for " + self.SNAPSHOT_DATE + " has been uploaded to this location:</p><p>" + url + "</p>"
-            
+
             content += "<p><b>Trade groups file</b><br>"
             content += "The trade groups file for " + self.SNAPSHOT_DATE + " has been uploaded to this location:</p><p>" + url2 + "</p>"
             content += "<p>Thank you.</p>"
@@ -204,9 +241,9 @@ class Application(object):
         self.footnotes = []
         sql = """select m.measure_sid, f.footnote_type_id || f.footnote_id  as footnote
         from footnotes f, footnote_association_measures fam, measures m
-        where fam.footnote_type_id = f.footnote_type_id 
-        and fam.footnote_id = f.footnote_id 
-        and fam.measure_sid = m.measure_sid 
+        where fam.footnote_type_id = f.footnote_type_id
+        and fam.footnote_id = f.footnote_id
+        and fam.measure_sid = m.measure_sid
         and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
         and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
         and left(m.goods_nomenclature_item_id, 1) = '""" + str(i) + """'
@@ -228,65 +265,122 @@ class Application(object):
 
     def extract_data(self):
         for commodity in self.commodities:
-            if commodity.leaf == 1:
+            if commodity.leaf == 1 and commodity.goods_nomenclature_item_id[0:2] != "99":
+                # Comm code-related fields
+                self.worksheet.write(self.row_count, 0, commodity.goods_nomenclature_item_id, self.standard)
+                self.worksheet.write(self.row_count, 1, commodity.hierarchical_description, self.standard)
+                self.worksheet.write(self.row_count, 2, commodity.validity_start_date, self.standard)
+                self.worksheet.write(self.row_count, 3, commodity.validity_end_date, self.standard)
+                
+                self.found_mfn = False
+                self.add_string = "N"
+                self.pref_string = "N"
+                self.quota_string = "N"
+                self.VAT_string = ""
+                self.excise_string = ""
+                self.end_use_string = "N"
+                self.VATs = []
+                self.supp_units = []
+                
                 for measure in commodity.measures:
-                    # Index
-                    self.worksheet.write(
-                        self.row_count, 1, str(self.row_count))
+                    if measure.measure_sid == 2982964:
+                        a = 1
+                    # Get the duty string
+                    if measure.measure_type_id in ("103", "105"):
+                        if self.found_mfn == False:
+                            self.worksheet.write(self.row_count, 4, measure.english_duty_string, self.standard)
+                            self.found_mfn = True
+                        if measure.measure_type_id == "105":
+                            self.end_use_string = "Y"
+                    
+                    # Get the VAT string
+                    elif measure.measure_type_id in ("305"):
+                        if measure.additional_code == "":
+                            self.VATs.append("S")
+                        elif measure.additional_code == "VATR":
+                            self.VATs.append("R")
+                        elif measure.additional_code == "VATZ":
+                            self.VATs.append("Z")
+                        elif measure.additional_code == "VATE":
+                            self.VATs.append("E")
+                    
+                    # Get ADD (Dumping)
+                    elif measure.measure_type_id in ("551", "552", "553", "554"):
+                        self.add_string = "Y"
+                    
+                    # Get pref string
+                    elif measure.measure_type_id in ("142", "145"):
+                        self.pref_string = "Y"
+                    
+                    # Get quota string
+                    elif measure.measure_type_id in ("122", "123", "143", "146"):
+                        self.quota_string = "Y"
+                    
+                    # Get quota string
+                    elif measure.measure_type_id in ("306"):
+                        self.excise_string = "Y"
+                    
+                    # Get supp units
+                    elif measure.measure_type_id in ("109", "110", "111"):
+                        if measure.english_duty_string != "":
+                            self.supp_units.append(measure.english_duty_string)
+                        
+                self.VAT_string = ", ".join(self.VATs)
+                self.qty1 = "000"
+                self.qty2 = "000"
+                self.qty3 = "000"
+                
+                self.qty1_clean = ""
+                self.qty2_clean = ""
+                self.qty3_clean = ""
 
-                    # Comm code-related fields
-                    self.worksheet.write(self.row_count, 1, str(
-                        commodity.goods_nomenclature_sid))
-                    self.worksheet.write(
-                        self.row_count, 2, commodity.goods_nomenclature_item_id)
-                    self.worksheet.write(
-                        self.row_count, 3, str(commodity.number_indents))
-                    self.worksheet.write(
-                        self.row_count, 4, commodity.description)
+                if commodity.goods_nomenclature_item_id == "0106110000":
+                    a = 1
+                    
+                has_kgm = False
+                for s in self.supp_units:
+                    if "KGM" in s:
+                        has_kgm = True
+                
+                if not has_kgm:
+                    self.supp_units.insert(0, "KGM")
+                    
+                self.chief_units = []
+                for s in self.supp_units:
+                    if s in self.units:
+                        self.chief_units.append(self.units[s])
+                
+                # self.chief_units = sorted(self.chief_units)
 
-                    # Measure-related fields
-                    self.worksheet.write(
-                        self.row_count, 5, str(measure.measure_sid))
-                    self.worksheet.write(
-                        self.row_count, 6, measure.measure_type_id)
-                    self.worksheet.write(
-                        self.row_count, 7, measure.measure_type_description)
-                    self.worksheet.write(
-                        self.row_count, 8, measure.additional_code)
-                    self.worksheet.write(
-                        self.row_count, 9, measure.additional_code_description)
-                    self.worksheet.write(
-                        self.row_count, 10, measure.english_duty_string)
-                    self.worksheet.write(
-                        self.row_count, 11, measure.validity_start_date)
-                    self.worksheet.write(
-                        self.row_count, 12, measure.validity_end_date)
-                    self.worksheet.write(self.row_count, 13, f.process_null(
-                        measure.reduction_indicator))
-                    self.worksheet.write(
-                        self.row_count, 14, measure.footnotes_string)
-                    self.worksheet.write(
-                        self.row_count, 15, measure.condition_string)
-                    self.worksheet.write(self.row_count, 16, str(
-                        measure.geographical_area_sid))
-                    self.worksheet.write(
-                        self.row_count, 17, measure.geographical_area_id)
-                    self.worksheet.write(
-                        self.row_count, 18, measure.geographical_area_description)
-                    self.worksheet.write(
-                        self.row_count, 19, measure.measure_excluded_geographical_areas_string)
-                    self.worksheet.write(
-                        self.row_count, 20, measure.measure_excluded_geographical_area_descriptions_string)
-                    self.worksheet.write(
-                        self.row_count, 21, measure.ordernumber)
-                    self.worksheet.write(
-                        self.row_count, 22, measure.quota_status)
-                    self.worksheet.write(
-                        self.row_count, 23, measure.measure_generating_regulation_id)
-                    self.worksheet.write(
-                        self.row_count, 24, measure.regulation_url)
+                if len(self.chief_units) > 0:
+                    self.qty1 = self.chief_units[0]
+                    self.qty1_clean = self.supp_units[0]
+                if len(self.chief_units) > 1:
+                    self.qty2 = self.chief_units[1]
+                    self.qty2_clean = self.supp_units[1]
+                if len(self.chief_units) > 2:
+                    self.qty3 = self.chief_units[2]
+                    self.qty3_clean = self.supp_units[2]
+                    
 
-                    self.row_count += 1
+                self.worksheet.write(self.row_count, 5, self.VAT_string, self.standard_centred)
+                self.worksheet.write(self.row_count, 6, self.add_string, self.standard_centred)
+                self.worksheet.write(self.row_count, 7, self.pref_string, self.standard_centred)
+                self.worksheet.write(self.row_count, 8, "", self.standard_centred) # LIC
+                self.worksheet.write(self.row_count, 9, "", self.standard_centred) # DPO
+                self.worksheet.write(self.row_count, 10, "", self.standard_centred) # CAP
+                self.worksheet.write(self.row_count, 11, self.quota_string, self.standard_centred)
+                self.worksheet.write(self.row_count, 12, self.excise_string, self.standard_centred)
+                self.worksheet.write(self.row_count, 13, self.end_use_string, self.standard_centred)
+                self.worksheet.write(self.row_count, 14, "", self.standard_centred) # MM
+                self.worksheet.write(self.row_count, 15, self.qty1, self.standard_centred) # Qty1
+                self.worksheet.write(self.row_count, 16, self.qty2, self.standard_centred) # Qty2
+                self.worksheet.write(self.row_count, 17, self.qty3, self.standard_centred) # Qty3
+                self.worksheet.write(self.row_count, 18, self.qty1_clean, self.standard_centred) # Qty1
+                self.worksheet.write(self.row_count, 19, self.qty2_clean, self.standard_centred) # Qty2
+                self.worksheet.write(self.row_count, 20, self.qty3_clean, self.standard_centred) # Qty3
+
+                self.row_count += 1
 
     def assign_measures_to_commodities(self):
         self.start_timer("Assigning measures to commodities")
@@ -337,7 +431,7 @@ class Application(object):
         and left(goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
         and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
         and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and m.measure_type_id not in ('109', '110', '111')
+        -- and m.measure_type_id not in ('109', '110', '111')
         order by measure_sid;"""
 
         d = Database()
@@ -742,198 +836,6 @@ class Application(object):
 
         self.end_timer("Getting geographical area members")
 
-    def write_geographical_area_members(self):
-        self.workbook = xlsxwriter.Workbook(self.geo_filename, {'strings_to_urls': False})
-        self.bold = self.workbook.add_format({'bold': True})
-        self.worksheet = self.workbook.add_worksheet(self.SNAPSHOT_DATE)
-
-        fields = [
-            ["parent_id", 20],
-            ["parent_description", 75],
-            ["child_id", 20],
-            ["child_description", 75]
-        ]
-        col = 0
-        for field, column_width in (fields):
-            column_string = chr(col + 65) + ":" + chr(col + 65)
-            self.worksheet.set_column(column_string, column_width)
-            self.worksheet.write(0, col, field, self.bold)
-            col += 1
-
-        self.row_count = 1
-        for ga in self.geographical_area_members:
-            self.worksheet.write(self.row_count, 0, ga.parent_id)
-            self.worksheet.write(self.row_count, 1, ga.parent_description)
-            self.worksheet.write(self.row_count, 2, ga.child_id)
-            self.worksheet.write(self.row_count, 3, ga.child_description)
-            self.row_count += 1
-
-        self.worksheet.freeze_panes(1, 0)
-        self.worksheet.autofilter('A1:D' + str(self.row_count))
-        self.workbook.close()
-
-    def get_quota_balances(self):
-        self.quota_balances = []
-        self.start_timer("Getting quota balances")
-        sql = """with cte as (
-            select distinct on (qbe.quota_definition_sid) 
-            qd.quota_order_number_id, qbe.quota_definition_sid, qbe.occurrence_timestamp,
-            qbe.new_balance, qd.quota_order_number_sid, qd.validity_start_date, qd.validity_end_date 
-            from quota_balance_events qbe, quota_definitions qd 
-            where qd.quota_definition_sid = qbe.quota_definition_sid 
-            and qd.quota_order_number_id like '05%'
-            and qd.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-            and qd.quota_order_number_id = '059124'
-            order by qbe.quota_definition_sid, qd.quota_order_number_id, qbe.occurrence_timestamp desc
-        )
-        select * from cte order by quota_order_number_id;
-        """
-        d = Database()
-        rows = d.run_query(sql)
-        for row in rows:
-            qb = QuotaBalance(row[0], row[1], row[2],
-                              row[3], row[4], row[5], row[6])
-            self.quota_balances.append(qb)
-        self.end_timer("Getting quota balances")
-
-    def assign_quota_balances(self):
-        self.start_timer("Assigning quota balances")
-        for qd in self.quota_definitions:
-            if qd.quota_order_number_id == "059124":
-                # if qd.quota_definition_sid == 20763:
-                a = 1
-            for qb in self.quota_balances:
-                if qb.quota_definition_sid == qd.quota_definition_sid:
-                    qd.quota_balances.append(qb)
-                    qd.quota_balance = qb.new_balance
-        self.end_timer("Assigning quota balances")
-
-        # Firstly, get the volumes from the initial volume in the definitions table
-        self.quota_order_numbers = {}
-        for qd in self.quota_definitions:
-            if qd.quota_order_number_id == "050076":
-                a = 1
-            if qd.quota_order_number_id not in self.quota_order_numbers:
-                self.quota_order_numbers[qd.quota_order_number_id] = qd.initial_volume
-
-        # Secondly, overlay the quota balances
-        for qd in self.quota_definitions:
-            if qd.quota_balance != 999999999999:
-                self.quota_order_numbers[qd.quota_order_number_id] = qd.quota_balance
-
-    def get_quotas(self):
-        self.start_timer(
-            "Getting and writing all quota definitions for CSV export")
-        self.quota_commodities = []
-        sql = """
-        select ordernumber, string_agg(distinct goods_nomenclature_item_id, '|' order by m.goods_nomenclature_item_id)
-        from utils.materialized_measures_real_end_dates m
-        where ordernumber like '05%'
-        and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and (m.validity_end_date is null or m.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
-        group by ordernumber
-        order by ordernumber
-        """
-        d = Database()
-        rows = d.run_query(sql)
-        for row in rows:
-            quota_commodity = QuotaCommodity()
-            quota_commodity.quota_order_number_id = row[0]
-            quota_commodity.commodities = row[1]
-
-            self.quota_commodities.append(quota_commodity)
-
-        # Get quota exclusions
-        self.quota_exclusions = []
-        sql = """
-        select qon.quota_order_number_id, qon.quota_order_number_sid,
-        string_agg(ga.geographical_area_id, '|' order by ga.geographical_area_id) as exclusions
-        from quota_order_number_origin_exclusions qonoe, quota_order_number_origins qono,
-        quota_order_numbers qon, geographical_areas ga 
-        where qono.quota_order_number_origin_sid = qonoe.quota_order_number_origin_sid 
-        and qon.quota_order_number_sid = qono.quota_order_number_sid 
-        and ga.geographical_area_sid = qonoe.excluded_geographical_area_sid 
-        and qon.quota_order_number_id like '05%'
-        group by qon.quota_order_number_id, qon.quota_order_number_sid
-        order by 1;"""
-        d = Database()
-        rows = d.run_query(sql)
-        for row in rows:
-            quota_exclusion = QuotaExclusion()
-            quota_exclusion.quota_order_number_id = row[0]
-            quota_exclusion.quota_order_number_sid = row[1]
-            quota_exclusion.exclusions = row[2]
-
-            self.quota_exclusions.append(quota_exclusion)
-
-        # Get quota definitions
-        self.quota_definitions = []
-
-        sql = """
-        select qon.quota_order_number_sid, qon.quota_order_number_id, qd.validity_start_date::text, qd.validity_end_date::text,
-        qd.initial_volume,
-        qd.measurement_unit_code || ' ' || coalesce(qd.measurement_unit_qualifier_code, '') as unit,
-        qd.critical_state, qd.critical_threshold, 'First Come First Served' as quota_type,
-        string_agg(distinct qono.geographical_area_id, '|' order by qono.geographical_area_id) as origins, qd.quota_definition_sid
-        from quota_order_numbers qon, quota_definitions qd, quota_order_number_origins qono 
-        where qd.quota_order_number_sid = qon.quota_order_number_sid 
-        and qon.quota_order_number_sid = qono.quota_order_number_sid 
-        and qon.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and (qon.validity_end_date is null or qon.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
-        and qd.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and (qd.validity_end_date is null or qd.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
-        and qon.quota_order_number_id like '05%'
-        -- and qon.quota_order_number_id = '059124'
-        group by qon.quota_order_number_sid, qon.quota_order_number_id, qd.validity_start_date, qd.validity_end_date,
-        qd.initial_volume, qd.measurement_unit_code, qd.measurement_unit_qualifier_code,
-        qd.critical_state, qd.critical_threshold, qd.quota_definition_sid
-
-        union 
-
-        select Null as quota_order_number_sid, m.ordernumber as quota_order_number_id,
-        m.validity_start_date::text, m.validity_end_date, Null as initial_volume,
-        Null as unit, Null as critical_state, Null as critical_threshold, 'Licensed' as quota_type,
-        string_agg(distinct m.geographical_area_id, '|' order by m.geographical_area_id) as origins, Null as quota_definition_sid
-        from utils.materialized_measures_real_end_dates m
-        where ordernumber like '054%'
-        and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and (m.validity_end_date is null or m.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
-        group by m.ordernumber, m.validity_start_date, m.validity_end_date
-        order by 2
-        """
-
-        d = Database()
-        rows = d.run_query(sql)
-        for row in rows:
-            quota_definition = QuotaDefinition()
-            quota_definition.quota_order_number_sid = row[0]
-            quota_definition.quota_order_number_id = row[1]
-            quota_definition.validity_start_date = row[2]
-            quota_definition.validity_end_date = row[3]
-            quota_definition.initial_volume = row[4]
-            quota_definition.unit = row[5]
-            quota_definition.critical_state = row[6]
-            quota_definition.critical_threshold = row[7]
-            quota_definition.quota_type = row[8]
-            quota_definition.origins = row[9]
-            quota_definition.quota_definition_sid = row[10]
-
-            # Assign the exclusions to the definitions
-            for exclusion in self.quota_exclusions:
-                if exclusion.quota_order_number_sid == quota_definition.quota_order_number_sid:
-                    quota_definition.exclusions = exclusion.exclusions
-                    break
-
-            # Assign the commodities to the definitions
-            for quota_commodity in self.quota_commodities:
-                if quota_commodity.quota_order_number_id == quota_definition.quota_order_number_id:
-                    quota_definition.commodities = quota_commodity.commodities
-                    break
-
-            self.quota_definitions.append(quota_definition)
-
-        self.end_timer(
-            "Getting and writing all quota definitions for CSV export")
 
     def rebase_chapters(self):
         # Reset the indent of chapters to -1, so that they are
@@ -1000,6 +902,13 @@ class Application(object):
             return "00000000"
         else:
             ret = d.strftime("%Y%m%d")
+            return ret
+
+    def DDMMYYYY(self, d):
+        if d is None:
+            return ""
+        else:
+            ret = d.strftime("%d/%m/%Y")
             return ret
 
     def HHMMSS(self, d):

@@ -16,6 +16,8 @@ class Commodity(object):
         self.measures = []
         self.hierarchy_sids = []
         
+        self.hierarchical_description = ""
+        
     def cleanse_description(self):
         if self.description is None:
             self.description = g.app.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS
@@ -48,11 +50,17 @@ class Commodity(object):
         for m in self.measures:
             self.measure_sids.append(m.measure_sid)
 
+        self.hierarchical_descriptions = []
         for commodity in self.hierarchy:
+            if commodity.significant_digits >= 4:
+                self.hierarchical_descriptions.append(commodity.description)
             for measure in commodity.measures:
                 if measure.measure_sid not in self.measure_sids:
                     self.measures.append(measure)
                     self.measure_sids.append(measure.measure_sid)
+                    
+        self.hierarchical_descriptions.append(self.description)
+        self.hierarchical_description = " > ".join(self.hierarchical_descriptions)
 
     def sort_measures(self):
         self.measures.sort(key=lambda x: (x.additional_code_id is None, x.additional_code_id), reverse=False)

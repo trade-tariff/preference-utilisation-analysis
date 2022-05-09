@@ -29,6 +29,11 @@ class Measure(object):
     def create_measure_duties(self):
         for mc in self.measure_components:
             self.english_duty_string += mc.english_component_definition
+            
+            if self.measure_type_id in ("109", "110"):
+                a = 1
+                
+            a = 1
 
     def get_additional_code_description(self):
         if self.additional_code_sid is not None:
