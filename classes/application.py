@@ -783,7 +783,6 @@ class Application(object):
             where qd.quota_definition_sid = qbe.quota_definition_sid 
             and qd.quota_order_number_id like '05%'
             and qd.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-            and qd.quota_order_number_id = '059124'
             order by qbe.quota_definition_sid, qd.quota_order_number_id, qbe.occurrence_timestamp desc
         )
         select * from cte order by quota_order_number_id;
