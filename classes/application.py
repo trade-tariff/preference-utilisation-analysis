@@ -27,11 +27,11 @@ class Application(object):
     def __init__(self):
         self.message_string = ""
         load_dotenv('.env')
-        
+
         self.DATABASE = os.getenv('DATABASE_UK')
         self.MEASURES_FILENAME = os.getenv('MEASURES_FILENAME')
         self.GEO_FILENAME = os.getenv('GEO_FILENAME')
-        
+
         self.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS = os.getenv('PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS')
         self.write_to_aws = int(os.getenv('WRITE_TO_AWS'))
 
@@ -120,13 +120,13 @@ class Application(object):
             # self.assign_footnotes_to_measures()
             self.get_condition_strings()
             self.assign_measure_excluded_geographical_areas()
-            self.get_quota_status()
+            self.get_quota_statuses()
             self.sort_measures()
             self.create_measure_duties()
 
             iteration = str(i) + "%"
 
-            sql = """select goods_nomenclature_sid, goods_nomenclature_item_id, producline_suffix, 
+            sql = """select goods_nomenclature_sid, goods_nomenclature_item_id, producline_suffix,
             validity_start_date, validity_end_date, description, number_indents, chapter, node,
             leaf, significant_digits
             from utils.goods_nomenclature_export_new(%s, %s) order by 2, 3"""
@@ -166,12 +166,12 @@ class Application(object):
 
     def load_and_mail(self):
         # Load to AWS (main measures file)
-        my_file = os.path.join(os.getcwd(), "_export",self.SNAPSHOT_DATE, self.file_only)
+        my_file = os.path.join(os.getcwd(), "_export", self.SNAPSHOT_DATE, self.file_only)
         aws_path = self.MEASURES_FILENAME + "/" + self.file_only
         url = self.load_to_aws("Loading preference utilisation analysis file " + self.SNAPSHOT_DATE, my_file, aws_path)
 
         # Load to AWS (members file)
-        my_file = os.path.join(os.getcwd(), "_export",self.SNAPSHOT_DATE, self.geo_file_only)
+        my_file = os.path.join(os.getcwd(), "_export", self.SNAPSHOT_DATE, self.geo_file_only)
         aws_path = self.GEO_FILENAME + "/" + self.geo_file_only
         url2 = self.load_to_aws("Loading trade groups file " + self.SNAPSHOT_DATE, my_file, aws_path)
 
@@ -181,16 +181,17 @@ class Application(object):
             content = "<p>Hello,</p>"
             content += "<p><b>Preference utilisation analysis file</b><br>"
             content += "The preference utilisation analysis file for " + self.SNAPSHOT_DATE + " has been uploaded to this location:</p><p>" + url + "</p>"
-            
+
             content += "<p><b>Trade groups file</b><br>"
             content += "The trade groups file for " + self.SNAPSHOT_DATE + " has been uploaded to this location:</p><p>" + url2 + "</p>"
             content += "<p>Thank you.</p>"
             attachment_list = []
             self.send_email_message(subject, content, attachment_list)
 
-    def get_quota_status(self):
+    def get_quota_statuses(self):
         for m in self.measures:
             m.get_quota_status()
+            m.check_exhausted()
 
     def apply_commodity_inheritance(self):
         self.start_timer("Applying inheritance")
@@ -204,9 +205,9 @@ class Application(object):
         self.footnotes = []
         sql = """select m.measure_sid, f.footnote_type_id || f.footnote_id  as footnote
         from footnotes f, footnote_association_measures fam, measures m
-        where fam.footnote_type_id = f.footnote_type_id 
-        and fam.footnote_id = f.footnote_id 
-        and fam.measure_sid = m.measure_sid 
+        where fam.footnote_type_id = f.footnote_type_id
+        and fam.footnote_id = f.footnote_id
+        and fam.measure_sid = m.measure_sid
         and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
         and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
         and left(m.goods_nomenclature_item_id, 1) = '""" + str(i) + """'
@@ -231,60 +232,35 @@ class Application(object):
             if commodity.leaf == 1:
                 for measure in commodity.measures:
                     # Index
-                    self.worksheet.write(
-                        self.row_count, 1, str(self.row_count))
+                    self.worksheet.write(self.row_count, 1, str(self.row_count))
 
                     # Comm code-related fields
-                    self.worksheet.write(self.row_count, 1, str(
-                        commodity.goods_nomenclature_sid))
-                    self.worksheet.write(
-                        self.row_count, 2, commodity.goods_nomenclature_item_id)
-                    self.worksheet.write(
-                        self.row_count, 3, str(commodity.number_indents))
-                    self.worksheet.write(
-                        self.row_count, 4, commodity.description)
+                    self.worksheet.write(self.row_count, 1, str(commodity.goods_nomenclature_sid))
+                    self.worksheet.write(self.row_count, 2, commodity.goods_nomenclature_item_id)
+                    self.worksheet.write(self.row_count, 3, str(commodity.number_indents))
+                    self.worksheet.write(self.row_count, 4, commodity.description)
 
                     # Measure-related fields
-                    self.worksheet.write(
-                        self.row_count, 5, str(measure.measure_sid))
-                    self.worksheet.write(
-                        self.row_count, 6, measure.measure_type_id)
-                    self.worksheet.write(
-                        self.row_count, 7, measure.measure_type_description)
-                    self.worksheet.write(
-                        self.row_count, 8, measure.additional_code)
-                    self.worksheet.write(
-                        self.row_count, 9, measure.additional_code_description)
-                    self.worksheet.write(
-                        self.row_count, 10, measure.english_duty_string)
-                    self.worksheet.write(
-                        self.row_count, 11, measure.validity_start_date)
-                    self.worksheet.write(
-                        self.row_count, 12, measure.validity_end_date)
-                    self.worksheet.write(self.row_count, 13, f.process_null(
-                        measure.reduction_indicator))
-                    self.worksheet.write(
-                        self.row_count, 14, measure.footnotes_string)
-                    self.worksheet.write(
-                        self.row_count, 15, measure.condition_string)
-                    self.worksheet.write(self.row_count, 16, str(
-                        measure.geographical_area_sid))
-                    self.worksheet.write(
-                        self.row_count, 17, measure.geographical_area_id)
-                    self.worksheet.write(
-                        self.row_count, 18, measure.geographical_area_description)
-                    self.worksheet.write(
-                        self.row_count, 19, measure.measure_excluded_geographical_areas_string)
-                    self.worksheet.write(
-                        self.row_count, 20, measure.measure_excluded_geographical_area_descriptions_string)
-                    self.worksheet.write(
-                        self.row_count, 21, measure.ordernumber)
-                    self.worksheet.write(
-                        self.row_count, 22, measure.quota_status)
-                    self.worksheet.write(
-                        self.row_count, 23, measure.measure_generating_regulation_id)
-                    self.worksheet.write(
-                        self.row_count, 24, measure.regulation_url)
+                    self.worksheet.write(self.row_count, 5, str(measure.measure_sid))
+                    self.worksheet.write(self.row_count, 6, measure.measure_type_id)
+                    self.worksheet.write(self.row_count, 7, measure.measure_type_description)
+                    self.worksheet.write(self.row_count, 8, measure.additional_code)
+                    self.worksheet.write(self.row_count, 9, measure.additional_code_description)
+                    self.worksheet.write(self.row_count, 10, measure.english_duty_string)
+                    self.worksheet.write(self.row_count, 11, measure.validity_start_date)
+                    self.worksheet.write(self.row_count, 12, measure.validity_end_date)
+                    self.worksheet.write(self.row_count, 13, f.process_null(measure.reduction_indicator))
+                    self.worksheet.write(self.row_count, 14, measure.footnotes_string)
+                    self.worksheet.write(self.row_count, 15, measure.condition_string)
+                    self.worksheet.write(self.row_count, 16, str(measure.geographical_area_sid))
+                    self.worksheet.write(self.row_count, 17, measure.geographical_area_id)
+                    self.worksheet.write(self.row_count, 18, measure.geographical_area_description)
+                    self.worksheet.write(self.row_count, 19, measure.measure_excluded_geographical_areas_string)
+                    self.worksheet.write(self.row_count, 20, measure.measure_excluded_geographical_area_descriptions_string)
+                    self.worksheet.write(self.row_count, 21, measure.ordernumber)
+                    self.worksheet.write(self.row_count, 22, measure.quota_status)
+                    self.worksheet.write(self.row_count, 23, measure.measure_generating_regulation_id)
+                    self.worksheet.write(self.row_count, 24, measure.regulation_url)
 
                     self.row_count += 1
 
@@ -449,7 +425,7 @@ class Application(object):
         sql = """select mc.measure_sid, mc.duty_expression_id, mc.duty_amount, mc.monetary_unit_code,
         mc.measurement_unit_code, mc.measurement_unit_qualifier_code, m.goods_nomenclature_item_id
         from measure_components mc, utils.materialized_measures_real_end_dates m
-        where m.measure_sid = mc.measure_sid 
+        where m.measure_sid = mc.measure_sid
         and left(m.goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
         and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
         and (m.validity_end_date is null or m.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
@@ -480,13 +456,13 @@ class Application(object):
         sql = """
         select mc.measure_condition_sid, mc.measure_sid, mc.condition_code, mc.component_sequence_number,
         mc.condition_duty_amount, mc.condition_monetary_unit_code, mc.condition_measurement_unit_code,
-        mc.condition_measurement_unit_qualifier_code, mc.action_code, mc.certificate_type_code, mc.certificate_code 
+        mc.condition_measurement_unit_qualifier_code, mc.action_code, mc.certificate_type_code, mc.certificate_code
         from measure_conditions mc, utils.materialized_measures_real_end_dates m
-        where m.measure_sid = mc.measure_sid 
+        where m.measure_sid = mc.measure_sid
         and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
         and left(m.goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
         and (m.validity_end_date is null or m.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
-        order by mc.measure_sid, mc.condition_code, mc.component_sequence_number 
+        order by mc.measure_sid, mc.condition_code, mc.component_sequence_number
         """
         d = Database()
         rows = d.run_query(sql)
@@ -512,9 +488,9 @@ class Application(object):
         # Get measure geo exclusions
         self.start_timer("Getting measure excluded geographical areas")
         self.measure_excluded_geographical_areas = []
-        sql = """select mega.measure_sid, mega.excluded_geographical_area, mega.geographical_area_sid 
+        sql = """select mega.measure_sid, mega.excluded_geographical_area, mega.geographical_area_sid
         from measure_excluded_geographical_areas mega, utils.materialized_measures_real_end_dates m
-        where m.measure_sid = mega.measure_sid 
+        where m.measure_sid = mega.measure_sid
         and left(m.goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
         and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
         and (m.validity_end_date is null or m.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
@@ -647,10 +623,10 @@ class Application(object):
         self.get_base_regulations()
 
     def get_measure_types_friendly(self):
-        sql = """select mt.measure_type_id, mtd.description 
-        from measure_types mt, measure_type_descriptions mtd 
-        where mt.measure_type_id = mtd.measure_type_id 
-        and mt.validity_end_date is null 
+        sql = """select mt.measure_type_id, mtd.description
+        from measure_types mt, measure_type_descriptions mtd
+        where mt.measure_type_id = mtd.measure_type_id
+        and mt.validity_end_date is null
         order by 1
         """
         self.measure_types_friendly = {}
@@ -662,9 +638,9 @@ class Application(object):
     def get_additional_codes_friendly(self):
         sql = """
         select distinct on (ac.additional_code_sid)
-        ac.additional_code_sid, acd.description 
-        from additional_codes ac, additional_code_description_periods acdp, additional_code_descriptions acd 
-        where ac.additional_code_sid = acdp.additional_code_sid 
+        ac.additional_code_sid, acd.description
+        from additional_codes ac, additional_code_description_periods acdp, additional_code_descriptions acd
+        where ac.additional_code_sid = acdp.additional_code_sid
         and ac.additional_code_sid = acd.additional_code_sid
         order by ac.additional_code_sid, acdp.validity_end_date desc;
         """
@@ -713,10 +689,10 @@ class Application(object):
         sql = """
         with cta_ga as (
             select distinct on (ga.geographical_area_sid)
-            ga.geographical_area_sid, ga.geographical_area_id, description 
+            ga.geographical_area_sid, ga.geographical_area_id, description
             from geographical_area_descriptions gad, geographical_area_description_periods gadp, geographical_areas ga
-            where ga.geographical_area_sid = gad.geographical_area_sid 
-            and gad.geographical_area_description_period_sid = gadp.geographical_area_description_period_sid 
+            where ga.geographical_area_sid = gad.geographical_area_sid
+            and gad.geographical_area_description_period_sid = gadp.geographical_area_description_period_sid
             and gad.description is not null
             and gadp.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
             and (gadp.validity_end_date >= '""" + self.SNAPSHOT_DATE + """' or gadp.validity_end_date is null)
@@ -725,7 +701,7 @@ class Application(object):
             order by ga.geographical_area_sid, ga.geographical_area_id, gad.description, gadp.validity_start_date desc
         )
         select parent.geographical_area_id, parent.description,
-        child.geographical_area_id, child.description 
+        child.geographical_area_id, child.description
         from geographical_area_memberships gam, cta_ga as parent, cta_ga as child
         where gam.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
         and gam.geographical_area_group_sid = parent.geographical_area_sid
@@ -776,13 +752,14 @@ class Application(object):
         self.quota_balances = []
         self.start_timer("Getting quota balances")
         sql = """with cte as (
-            select distinct on (qbe.quota_definition_sid) 
+            select distinct on (qbe.quota_definition_sid)
             qd.quota_order_number_id, qbe.quota_definition_sid, qbe.occurrence_timestamp,
-            qbe.new_balance, qd.quota_order_number_sid, qd.validity_start_date, qd.validity_end_date 
-            from quota_balance_events qbe, quota_definitions qd 
-            where qd.quota_definition_sid = qbe.quota_definition_sid 
+            qbe.new_balance, qd.quota_order_number_sid, qd.validity_start_date, qd.validity_end_date
+            from quota_balance_events qbe, quota_definitions qd
+            where qd.quota_definition_sid = qbe.quota_definition_sid
             and qd.quota_order_number_id like '05%'
             and qd.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
+            and qbe.occurrence_timestamp <= '""" + self.SNAPSHOT_DATE + """'
             order by qbe.quota_definition_sid, qd.quota_order_number_id, qbe.occurrence_timestamp desc
         )
         select * from cte order by quota_order_number_id;
@@ -790,17 +767,13 @@ class Application(object):
         d = Database()
         rows = d.run_query(sql)
         for row in rows:
-            qb = QuotaBalance(row[0], row[1], row[2],
-                              row[3], row[4], row[5], row[6])
+            qb = QuotaBalance(row[0], row[1], row[2], row[3], row[4], row[5], row[6])
             self.quota_balances.append(qb)
         self.end_timer("Getting quota balances")
 
     def assign_quota_balances(self):
         self.start_timer("Assigning quota balances")
         for qd in self.quota_definitions:
-            if qd.quota_order_number_id == "059124":
-                # if qd.quota_definition_sid == 20763:
-                a = 1
             for qb in self.quota_balances:
                 if qb.quota_definition_sid == qd.quota_definition_sid:
                     qd.quota_balances.append(qb)
@@ -821,8 +794,8 @@ class Application(object):
                 self.quota_order_numbers[qd.quota_order_number_id] = qd.quota_balance
 
     def get_quotas(self):
-        self.start_timer(
-            "Getting and writing all quota definitions for CSV export")
+        # Get the quotas that are referenced in measures for the given period
+        self.start_timer("Getting and writing all quota definitions for CSV export")
         self.quota_commodities = []
         sql = """
         select ordernumber, string_agg(distinct goods_nomenclature_item_id, '|' order by m.goods_nomenclature_item_id)
@@ -842,16 +815,16 @@ class Application(object):
 
             self.quota_commodities.append(quota_commodity)
 
-        # Get quota exclusions
+        # Get quota exclusions for all quotas
         self.quota_exclusions = []
         sql = """
         select qon.quota_order_number_id, qon.quota_order_number_sid,
         string_agg(ga.geographical_area_id, '|' order by ga.geographical_area_id) as exclusions
         from quota_order_number_origin_exclusions qonoe, quota_order_number_origins qono,
-        quota_order_numbers qon, geographical_areas ga 
-        where qono.quota_order_number_origin_sid = qonoe.quota_order_number_origin_sid 
-        and qon.quota_order_number_sid = qono.quota_order_number_sid 
-        and ga.geographical_area_sid = qonoe.excluded_geographical_area_sid 
+        quota_order_numbers qon, geographical_areas ga
+        where qono.quota_order_number_origin_sid = qonoe.quota_order_number_origin_sid
+        and qon.quota_order_number_sid = qono.quota_order_number_sid
+        and ga.geographical_area_sid = qonoe.excluded_geographical_area_sid
         and qon.quota_order_number_id like '05%'
         group by qon.quota_order_number_id, qon.quota_order_number_sid
         order by 1;"""
@@ -868,31 +841,67 @@ class Application(object):
         # Get quota definitions
         self.quota_definitions = []
 
+        # This SQL works with all quotas that have origins, however there are a few that have no origins
         sql = """
         select qon.quota_order_number_sid, qon.quota_order_number_id, qd.validity_start_date::text, qd.validity_end_date::text,
         qd.initial_volume,
         qd.measurement_unit_code || ' ' || coalesce(qd.measurement_unit_qualifier_code, '') as unit,
         qd.critical_state, qd.critical_threshold, 'First Come First Served' as quota_type,
         string_agg(distinct qono.geographical_area_id, '|' order by qono.geographical_area_id) as origins, qd.quota_definition_sid
-        from quota_order_numbers qon, quota_definitions qd, quota_order_number_origins qono 
-        where qd.quota_order_number_sid = qon.quota_order_number_sid 
-        and qon.quota_order_number_sid = qono.quota_order_number_sid 
+        from quota_order_numbers qon, quota_definitions qd, quota_order_number_origins qono
+        where qd.quota_order_number_sid = qon.quota_order_number_sid
+        and qon.quota_order_number_sid = qono.quota_order_number_sid
         and qon.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
         and (qon.validity_end_date is null or qon.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
         and qd.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
         and (qd.validity_end_date is null or qd.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
         and qon.quota_order_number_id like '05%'
-        -- and qon.quota_order_number_id = '059124'
         group by qon.quota_order_number_sid, qon.quota_order_number_id, qd.validity_start_date, qd.validity_end_date,
         qd.initial_volume, qd.measurement_unit_code, qd.measurement_unit_qualifier_code,
         qd.critical_state, qd.critical_threshold, qd.quota_definition_sid
 
-        union 
+        union
 
         select Null as quota_order_number_sid, m.ordernumber as quota_order_number_id,
         m.validity_start_date::text, m.validity_end_date, Null as initial_volume,
         Null as unit, Null as critical_state, Null as critical_threshold, 'Licensed' as quota_type,
         string_agg(distinct m.geographical_area_id, '|' order by m.geographical_area_id) as origins, Null as quota_definition_sid
+        from utils.materialized_measures_real_end_dates m
+        where ordernumber like '054%'
+        and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
+        and (m.validity_end_date is null or m.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
+        group by m.ordernumber, m.validity_start_date, m.validity_end_date
+        order by 2
+        """
+
+        # This SQL works with all quotas, even if they have no origins, however it does not populate the "origins" field
+        # Need to know for sure if this matters.
+        sql = """
+        select qon.quota_order_number_sid, qon.quota_order_number_id, qd.validity_start_date::text, qd.validity_end_date::text,
+        qd.initial_volume,
+        qd.measurement_unit_code || ' ' || coalesce(qd.measurement_unit_qualifier_code, '') as unit,
+        qd.critical_state, qd.critical_threshold, 'First Come First Served' as quota_type,
+        '' as origins,
+        qd.quota_definition_sid
+        from quota_order_numbers qon, quota_definitions qd --, quota_order_number_origins qono
+        where qd.quota_order_number_sid = qon.quota_order_number_sid
+        and qon.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
+        and (qon.validity_end_date is null or qon.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
+        and qd.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
+        and (qd.validity_end_date is null or qd.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
+        and qon.quota_order_number_id like '05%'
+        and qon.quota_order_number_id not like '054%'
+        group by qon.quota_order_number_sid, qon.quota_order_number_id, qd.validity_start_date, qd.validity_end_date,
+        qd.initial_volume, qd.measurement_unit_code, qd.measurement_unit_qualifier_code,
+        qd.critical_state, qd.critical_threshold, qd.quota_definition_sid
+
+        union
+
+        select Null as quota_order_number_sid, m.ordernumber as quota_order_number_id,
+        m.validity_start_date::text, m.validity_end_date, Null as initial_volume,
+        Null as unit, Null as critical_state, Null as critical_threshold, 'Licensed' as quota_type,
+        '' as origins,
+        Null as quota_definition_sid
         from utils.materialized_measures_real_end_dates m
         where ordernumber like '054%'
         and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
@@ -931,8 +940,7 @@ class Application(object):
 
             self.quota_definitions.append(quota_definition)
 
-        self.end_timer(
-            "Getting and writing all quota definitions for CSV export")
+        self.end_timer("Getting and writing all quota definitions for CSV export")
 
     def rebase_chapters(self):
         # Reset the indent of chapters to -1, so that they are

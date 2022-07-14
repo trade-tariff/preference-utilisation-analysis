@@ -1,5 +1,7 @@
 import sys
+from datetime import datetime, timedelta, date
 import classes.globals as g
+from classes.database import Database
 
 
 class Measure(object):
@@ -61,7 +63,7 @@ class Measure(object):
         if self.ordernumber == "" or self.ordernumber is None:
             self.quota_status = ""
         elif self.ordernumber[0:3] == "054":
-            self.quota_status =  "See RPA"
+            self.quota_status = "See RPA"
         else:
             if self.ordernumber in g.app.quota_order_numbers:
                 if g.app.quota_order_numbers[self.ordernumber] == 0:
@@ -70,3 +72,77 @@ class Measure(object):
                     self.quota_status = "Open"
             else:
                 self.quota_status = "Exhausted"
+
+    def check_exhausted(self):
+        # This checks all exhausted quotas to see if they have a comparable definition against them
+        # If they do not, then they need to be set to "Open", as they cannot possibly be exhausted
+        # measure.validity_start_date = row[18]
+        # measure.validity_end_date = row[19]
+
+        if self.quota_status == "Exhausted":
+            current_year = str(date.today().year)
+
+            # Set the validity of the measure itself: if it is not enddated (infinite), then set the measure end date to the end of the current year
+            if self.validity_end_date == "" or self.validity_end_date is None:
+                m_end = current_year + "-12-31"
+            else:
+                m_end = self.validity_end_date[0:10]
+
+            m_start = self.validity_start_date[0:10]
+
+            a = type(self.validity_start_date)
+            sql = """
+            select validity_start_date::varchar, validity_end_date::varchar
+            from quota_definitions qd
+            where quota_order_number_id = %s
+            order by validity_start_date
+            """
+            d = Database()
+            params = [
+                self.ordernumber
+            ]
+            rows = d.run_query(sql, params)
+            definitions = []
+            if rows:
+                for row in rows:
+                    d_start = row[0][0:10]
+                    d_end = row[1][0:10]
+                    d = Definition(d_start, d_end)
+                    definitions.append(d)
+
+                # Conjoin the definitions that are immediately contiguous
+                for i in range(0, len(definitions) - 1):
+                    d1 = definitions[i]
+                    d2 = definitions[i + 1]
+                    d1_end = datetime.strptime(d1.validity_end_date, "%Y-%m-%d")
+                    d2_start = datetime.strptime(d2.validity_start_date, "%Y-%m-%d")
+                    delta = d2_start - d1_end
+                    if delta.days == 1:
+                        d1.mark_for_deletion = True
+                        d2.validity_start_date = d1.validity_start_date
+
+                # And then delete any that are marked for deletion
+                for i in range(len(definitions) - 1, -1, -1):
+                    d = definitions[i]
+                    if d.mark_for_deletion:
+                        definitions.pop(i)
+
+                # Finally, compare the extent of the measure with the extents of the quota definitions
+                enclosed = False
+                for d in definitions:
+                    if d.validity_start_date <= g.app.SNAPSHOT_DATE and d.validity_end_date >= g.app.SNAPSHOT_DATE:
+                        enclosed = True
+                        break
+
+                if not enclosed:
+                    self.quota_status = "Invalid"
+            else:
+                # If there are no definitions at all, set the quota status to "Open" instead
+                self.quota_status = "Invalid"
+
+
+class Definition(object):
+    def __init__(self, validity_start_date, validity_end_date):
+        self.validity_start_date = validity_start_date
+        self.validity_end_date = validity_end_date
+        self.mark_for_deletion = False
