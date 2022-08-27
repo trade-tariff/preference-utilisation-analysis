@@ -5,6 +5,7 @@ from pathlib2 import Path
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, date
 import xlsxwriter
+import ssl
 
 from classes.database import Database
 from classes.functions import functions as f
@@ -47,6 +48,10 @@ class Application(object):
             self.get_folders()
             self.get_process_scope()
             self.get_filename()
+        self.create_ssl_unverified_context()
+
+    def create_ssl_unverified_context(self):
+        ssl._create_default_https_context = ssl._create_unverified_context
 
     def get_filename(self):
         self.file_only = self.MEASURES_FILENAME + "_{dt}.xlsx".format(dt=self.SNAPSHOT_DATE)
