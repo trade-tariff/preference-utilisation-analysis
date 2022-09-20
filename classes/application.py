@@ -6,6 +6,9 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta, date
 import xlsxwriter
 import ssl
+import inquirer
+from pprint import pprint
+from colorama import init, Fore, Back, Style
 
 from classes.database import Database
 from classes.functions import functions as f
@@ -32,9 +35,30 @@ class Application(object):
         self.DATABASE = os.getenv('DATABASE_UK')
         self.MEASURES_FILENAME = os.getenv('MEASURES_FILENAME')
         self.GEO_FILENAME = os.getenv('GEO_FILENAME')
+        self.INCLUDED_MEASURES = os.getenv('INCLUDED_MEASURES')
+        self.INCLUDED_MEASURES = self.INCLUDED_MEASURES if self.INCLUDED_MEASURES is not None else ""
+        if self.INCLUDED_MEASURES != "":
+            self.INCLUDED_MEASURES = self.INCLUDED_MEASURES.split(",")
+            self.INCLUDED_MEASURES = "'" + "', '".join(self.INCLUDED_MEASURES) + "'"
+            print("\n\n")
+            questions = [
+                inquirer.Confirm("stop", message="Are you sure that you want to generate this file for selected measures?", default=True),
+            ]
+            answers = inquirer.prompt(questions)
+            if answers["stop"] is False:
+                init(autoreset=True)
+                print(Style.NORMAL + Fore.YELLOW + "\nStopping running the session\n\n".upper())
+                print(Style.NORMAL + Fore.WHITE)
+                sys.exit()
+            else:
+                print(Style.BRIGHT + Fore.YELLOW + "\Carrying on with the session\n\n".upper())
+                print(Style.NORMAL + Fore.WHITE)
 
         self.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS = os.getenv('PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS')
         self.write_to_aws = int(os.getenv('WRITE_TO_AWS'))
+
+        if self.INCLUDED_MEASURES != "":
+            self.write_to_aws = 0
 
         if "testmail" not in sys.argv[0]:
             # Check whether UK or XI
@@ -48,6 +72,7 @@ class Application(object):
             self.get_folders()
             self.get_process_scope()
             self.get_filename()
+
         self.create_ssl_unverified_context()
 
     def create_ssl_unverified_context(self):
@@ -310,16 +335,29 @@ class Application(object):
         self.measures = []
 
         # Sort by measure SID to speed up processing in the assignment functions later
-        sql = """select m.*, mt.measure_type_series_id,
-        mt.measure_component_applicable_code, mt.trade_movement_code, mtd.description as measure_type_description
-        from utils.materialized_measures_real_end_dates m, measure_types mt, measure_type_descriptions mtd
-        where m.measure_type_id = mt.measure_type_id
-        and m.measure_type_id = mtd.measure_type_id
-        and left(goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
-        and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
-        and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and m.measure_type_id not in ('109', '110', '111')
-        order by measure_sid;"""
+
+        if self.INCLUDED_MEASURES == "":
+            sql = """select m.*, mt.measure_type_series_id,
+            mt.measure_component_applicable_code, mt.trade_movement_code, mtd.description as measure_type_description
+            from utils.materialized_measures_real_end_dates m, measure_types mt, measure_type_descriptions mtd
+            where m.measure_type_id = mt.measure_type_id
+            and m.measure_type_id = mtd.measure_type_id
+            and left(goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
+            and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
+            and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
+            and m.measure_type_id not in ('109', '110', '111')
+            order by measure_sid;"""
+        else:
+            sql = """select m.*, mt.measure_type_series_id,
+            mt.measure_component_applicable_code, mt.trade_movement_code, mtd.description as measure_type_description
+            from utils.materialized_measures_real_end_dates m, measure_types mt, measure_type_descriptions mtd
+            where m.measure_type_id = mt.measure_type_id
+            and m.measure_type_id = mtd.measure_type_id
+            and m.measure_type_id in (""" + self.INCLUDED_MEASURES + """)
+            and left(goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
+            and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
+            and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
+            order by measure_sid;"""
 
         d = Database()
         rows = d.run_query(sql.replace("\n", ""))

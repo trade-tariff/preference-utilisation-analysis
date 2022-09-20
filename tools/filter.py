@@ -1,8 +1,11 @@
 import csv
 
-in_file = "/Users/mattlavis/sites and projects/1. Online Tariff/electronic-tariff-file/_export/2022-06-09/uk/csv/hmrc-tariff-measures-2022-06-09.csv"
-out_file = "/Users/mattlavis/sites and projects/1. Online Tariff/electronic-tariff-file/_export/2022-06-09/uk/csv/cat-2022-06-09.csv"
+
+print("Doing")
+in_file = "/Users/MLavis.Admin/sites and projects/1. Online Tariff/04. electronic-tariff-file/_export/2022-09-15/uk/csv/hmrc-tariff-measures-2022-09-15.csv"
+out_file = "/Users/MLavis.Admin/sites and projects/1. Online Tariff/04. electronic-tariff-file/_export/2022-09-15/uk/csv/hmrc-tariff-measures-2022-09-15-305.csv"
 
 reader = csv.reader(open(in_file), delimiter=',')
 filtered = filter(lambda p: '305' == p[3], reader)
 csv.writer(open(out_file, 'w'), delimiter=',').writerows(filtered)
+print("Done")
