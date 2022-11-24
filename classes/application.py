@@ -35,8 +35,19 @@ class Application(object):
         self.DATABASE = os.getenv('DATABASE_UK')
         self.MEASURES_FILENAME = os.getenv('MEASURES_FILENAME')
         self.GEO_FILENAME = os.getenv('GEO_FILENAME')
+
+        # These are only really used for testing purposes
         self.INCLUDED_MEASURES = os.getenv('INCLUDED_MEASURES')
         self.INCLUDED_MEASURES = self.INCLUDED_MEASURES if self.INCLUDED_MEASURES is not None else ""
+
+        self.EXCLUDED_MEASURES = os.getenv('EXCLUDED_MEASURES')
+        self.EXCLUDED_MEASURES = self.EXCLUDED_MEASURES if self.EXCLUDED_MEASURES is not None else ""
+
+        if self.EXCLUDED_MEASURES != "":
+            self.EXCLUDED_MEASURES = self.EXCLUDED_MEASURES.split(",")
+            self.EXCLUDED_MEASURES = "'" + "', '".join(self.EXCLUDED_MEASURES) + "'"
+        a = 1
+
         if self.INCLUDED_MEASURES != "":
             self.INCLUDED_MEASURES = self.INCLUDED_MEASURES.split(",")
             self.INCLUDED_MEASURES = "'" + "', '".join(self.INCLUDED_MEASURES) + "'"
@@ -51,14 +62,14 @@ class Application(object):
                 print(Style.NORMAL + Fore.WHITE)
                 sys.exit()
             else:
-                print(Style.BRIGHT + Fore.YELLOW + "\Carrying on with the session\n\n".upper())
+                print(Style.BRIGHT + Fore.YELLOW + "\nCarrying on with the session\n\n".upper())
                 print(Style.NORMAL + Fore.WHITE)
 
         self.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS = os.getenv('PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS')
         self.write_to_aws = int(os.getenv('WRITE_TO_AWS'))
 
-        if self.INCLUDED_MEASURES != "":
-            self.write_to_aws = 0
+        # if self.INCLUDED_MEASURES != "":
+        #     self.write_to_aws = 0
 
         if "testmail" not in sys.argv[0]:
             # Check whether UK or XI
@@ -336,7 +347,19 @@ class Application(object):
 
         # Sort by measure SID to speed up processing in the assignment functions later
 
-        if self.INCLUDED_MEASURES == "":
+        if self.EXCLUDED_MEASURES != "":
+            sql = """select m.*, mt.measure_type_series_id,
+            mt.measure_component_applicable_code, mt.trade_movement_code, mtd.description as measure_type_description
+            from utils.materialized_measures_real_end_dates m, measure_types mt, measure_type_descriptions mtd
+            where m.measure_type_id = mt.measure_type_id
+            and m.measure_type_id = mtd.measure_type_id
+            and m.measure_type_id not in (""" + self.EXCLUDED_MEASURES + """)
+            and m.measure_type_id not in ('109', '110', '111')
+            and left(goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
+            and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
+            and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
+            order by measure_sid;"""
+        elif self.INCLUDED_MEASURES == "":
             sql = """select m.*, mt.measure_type_series_id,
             mt.measure_component_applicable_code, mt.trade_movement_code, mtd.description as measure_type_description
             from utils.materialized_measures_real_end_dates m, measure_types mt, measure_type_descriptions mtd
