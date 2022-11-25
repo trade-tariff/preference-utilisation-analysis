@@ -170,7 +170,9 @@ class Application(object):
             sql = """select goods_nomenclature_sid, goods_nomenclature_item_id, producline_suffix,
             validity_start_date, validity_end_date, description, number_indents, chapter, node,
             leaf, significant_digits
-            from utils.goods_nomenclature_export_new(%s, %s) order by 2, 3"""
+            from utils.goods_nomenclature_export_new(%s, %s)
+            where left(goods_nomenclature_item_id, 2) != '98'
+            order by 2, 3"""
 
             d = Database()
             params = [
