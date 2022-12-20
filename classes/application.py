@@ -34,6 +34,7 @@ class Application(object):
 
         self.DATABASE = os.getenv('DATABASE_UK')
         self.MEASURES_FILENAME = os.getenv('MEASURES_FILENAME')
+        self.STW_FILENAME = os.getenv('STW_FILENAME')
         self.GEO_FILENAME = os.getenv('GEO_FILENAME')
 
         # These are only really used for testing purposes
@@ -46,11 +47,10 @@ class Application(object):
         if self.EXCLUDED_MEASURES != "":
             self.EXCLUDED_MEASURES = self.EXCLUDED_MEASURES.split(",")
             self.EXCLUDED_MEASURES = "'" + "', '".join(self.EXCLUDED_MEASURES) + "'"
-        a = 1
 
         if self.INCLUDED_MEASURES != "":
-            self.INCLUDED_MEASURES = self.INCLUDED_MEASURES.split(",")
-            self.INCLUDED_MEASURES = "'" + "', '".join(self.INCLUDED_MEASURES) + "'"
+            self.INCLUDED_MEASURES_ARRAY = self.INCLUDED_MEASURES.split(",")
+            self.INCLUDED_MEASURES = "'" + "', '".join(self.INCLUDED_MEASURES_ARRAY) + "'"
             print("\n\n")
             questions = [
                 inquirer.Confirm("stop", message="Are you sure that you want to generate this file for selected measures?", default=True),
@@ -67,9 +67,6 @@ class Application(object):
 
         self.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS = os.getenv('PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS')
         self.write_to_aws = int(os.getenv('WRITE_TO_AWS'))
-
-        # if self.INCLUDED_MEASURES != "":
-        #     self.write_to_aws = 0
 
         if "testmail" not in sys.argv[0]:
             # Check whether UK or XI
@@ -93,6 +90,9 @@ class Application(object):
         self.file_only = self.MEASURES_FILENAME + "_{dt}.xlsx".format(dt=self.SNAPSHOT_DATE)
         self.filename = os.path.join(self.dated_folder, self.file_only)
 
+        self.file_only = self.STW_FILENAME + "_{dt}.xlsx".format(dt=self.SNAPSHOT_DATE)
+        self.stw_filename = os.path.join(self.dated_folder, self.file_only)
+
         self.geo_file_only = "trade_groups_{dt}.xlsx".format(dt=self.SNAPSHOT_DATE)
         self.geo_filename = os.path.join(self.dated_folder, self.geo_file_only)
 
@@ -107,10 +107,16 @@ class Application(object):
     def get_commodities(self):
         # Create the Excel document right at the start
         # Also write the table headers
-        self.workbook = xlsxwriter.Workbook(
-            self.filename, {'strings_to_urls': False})
+        self.workbook = xlsxwriter.Workbook(self.filename, {'strings_to_urls': False})
+        self.workbook_stw = xlsxwriter.Workbook(self.stw_filename, {'strings_to_urls': False})
+
         self.bold = self.workbook.add_format({'bold': True})
+        self.bold_stw = self.workbook_stw.add_format({'bold': True})
+
         self.worksheet = self.workbook.add_worksheet(self.SNAPSHOT_DATE)
+        self.worksheet_stw = self.workbook_stw.add_worksheet(self.SNAPSHOT_DATE)
+
+        # PUA fields
         fields = [
             ["trackedmodel_ptr_id", 20],
             ["commodity__sid", 20],
@@ -119,7 +125,7 @@ class Application(object):
             ["commodity__description", 50],
             ["measure__sid", 20],
             ["measure__type__id", 20],
-            ["measure__type__description", 20],
+            ["measure__type__description", 30],
             ["measure__additional_code__code", 20],
             ["measure__additional_code__description", 20],
             ["measure__duty_expression", 20],
@@ -127,7 +133,7 @@ class Application(object):
             ["measure__effective_end_date", 20],
             ["measure_reduction_indicator", 20],
             ["measure__footnotes", 20],
-            ["measure__conditions", 20],
+            ["measure__conditions", 100],
             ["measure__geographical_area__sid", 20],
             ["measure__geographical_area__id", 20],
             ["measure__geographical_area__description", 20],
@@ -146,19 +152,43 @@ class Application(object):
             self.worksheet.write(0, col, field, self.bold)
             col += 1
 
+        # STW fields
+        col = 0
+        fields = [
+            ["commodity__code", 20],
+            ["commodity__description", 50],
+            ["measure__sid", 20],
+            ["measure__type__id", 20],
+            ["measure__type__description", 30],
+            ["measure__duty_expression", 20],
+            ["measure__effective_start_date", 20],
+            ["measure__effective_end_date", 20],
+            ["measure__conditions", 50],
+            ["measure__geographical_area__id", 20],
+            ["measure__geographical_area__description", 20],
+            ["measure__excluded_geographical_areas__ids", 20],
+            ["measure__excluded_geographical_areas__descriptions", 20],
+            ["trade_direction", 20],
+            ["url", 150]
+        ]
+        for field, column_width in (fields):
+            column_string = chr(col + 65) + ":" + chr(col + 65)
+            self.worksheet_stw.set_column(column_string, column_width)
+            self.worksheet_stw.write(0, col, field, self.bold_stw)
+            col += 1
+
         self.row_count = 1
+        self.row_count_stw = 1
+
         for i in range(self.start, self.end):
-            self.start_loop_timer(
-                "Creating data for commodity codes starting with " + str(i))
+            self.start_loop_timer("Creating data for commodity codes starting with " + str(i))
             self.commodities = []
             self.get_measure_components(i)
             self.get_measure_conditions(i)
             self.get_measure_excluded_geographical_areas(i)
             self.get_measures(i)
-            # self.get_footnotes(i)
             self.assign_measure_components_to_measures()
             self.assign_measure_conditions_to_measures()
-            # self.assign_footnotes_to_measures()
             self.get_condition_strings()
             self.assign_measure_excluded_geographical_areas()
             self.get_quota_statuses()
@@ -200,12 +230,18 @@ class Application(object):
             self.extract_data()
 
         # Actions to be completed after the end of the last iteration
-        self.start_timer("Saving file")
+        self.start_timer("Saving PUA file")
         self.worksheet.freeze_panes(1, 0)
         self.worksheet.autofilter('A1:Y' + str(self.row_count))
         self.workbook.close()
+
+        self.start_timer("Saving STW file")
+        self.worksheet_stw.freeze_panes(1, 0)
+        self.worksheet_stw.autofilter('A1:O' + str(self.row_count_stw))
+        self.workbook_stw.close()
+
         self.end_timer("Saving file")
-        self.load_and_mail()
+        # self.load_and_mail()
 
     def load_and_mail(self):
         # Load to AWS (main measures file)
@@ -274,38 +310,65 @@ class Application(object):
         for commodity in self.commodities:
             if commodity.leaf == 1:
                 for measure in commodity.measures:
-                    # Index
-                    self.worksheet.write(self.row_count, 1, str(self.row_count))
+                    # Write Don's data
+                    if measure.measure_type_id in self.INCLUDED_MEASURES_ARRAY:
+                        # Index
+                        self.worksheet.write(self.row_count, 0, str(self.row_count))
 
-                    # Comm code-related fields
-                    self.worksheet.write(self.row_count, 1, str(commodity.goods_nomenclature_sid))
-                    self.worksheet.write(self.row_count, 2, commodity.goods_nomenclature_item_id)
-                    self.worksheet.write(self.row_count, 3, str(commodity.number_indents))
-                    self.worksheet.write(self.row_count, 4, commodity.description)
+                        # Comm code-related fields
+                        self.worksheet.write(self.row_count, 1, str(commodity.goods_nomenclature_sid))
+                        self.worksheet.write(self.row_count, 2, commodity.goods_nomenclature_item_id)
+                        self.worksheet.write(self.row_count, 3, str(commodity.number_indents))
+                        self.worksheet.write(self.row_count, 4, commodity.description)
 
-                    # Measure-related fields
-                    self.worksheet.write(self.row_count, 5, str(measure.measure_sid))
-                    self.worksheet.write(self.row_count, 6, measure.measure_type_id)
-                    self.worksheet.write(self.row_count, 7, measure.measure_type_description)
-                    self.worksheet.write(self.row_count, 8, measure.additional_code)
-                    self.worksheet.write(self.row_count, 9, measure.additional_code_description)
-                    self.worksheet.write(self.row_count, 10, measure.english_duty_string)
-                    self.worksheet.write(self.row_count, 11, measure.validity_start_date)
-                    self.worksheet.write(self.row_count, 12, measure.validity_end_date)
-                    self.worksheet.write(self.row_count, 13, f.process_null(measure.reduction_indicator))
-                    self.worksheet.write(self.row_count, 14, measure.footnotes_string)
-                    self.worksheet.write(self.row_count, 15, measure.condition_string)
-                    self.worksheet.write(self.row_count, 16, str(measure.geographical_area_sid))
-                    self.worksheet.write(self.row_count, 17, measure.geographical_area_id)
-                    self.worksheet.write(self.row_count, 18, measure.geographical_area_description)
-                    self.worksheet.write(self.row_count, 19, measure.measure_excluded_geographical_areas_string)
-                    self.worksheet.write(self.row_count, 20, measure.measure_excluded_geographical_area_descriptions_string)
-                    self.worksheet.write(self.row_count, 21, measure.ordernumber)
-                    self.worksheet.write(self.row_count, 22, measure.quota_status)
-                    self.worksheet.write(self.row_count, 23, measure.measure_generating_regulation_id)
-                    self.worksheet.write(self.row_count, 24, measure.regulation_url)
+                        # Measure-related fields
+                        self.worksheet.write(self.row_count, 5, str(measure.measure_sid))
+                        self.worksheet.write(self.row_count, 6, measure.measure_type_id)
+                        self.worksheet.write(self.row_count, 7, measure.measure_type_description)
+                        self.worksheet.write(self.row_count, 8, measure.additional_code)
+                        self.worksheet.write(self.row_count, 9, measure.additional_code_description)
+                        self.worksheet.write(self.row_count, 10, measure.english_duty_string)
+                        self.worksheet.write(self.row_count, 11, measure.validity_start_date)
+                        self.worksheet.write(self.row_count, 12, measure.validity_end_date)
+                        self.worksheet.write(self.row_count, 13, f.process_null(measure.reduction_indicator))
+                        self.worksheet.write(self.row_count, 14, measure.footnotes_string)
+                        self.worksheet.write(self.row_count, 15, measure.condition_string)
+                        self.worksheet.write(self.row_count, 16, str(measure.geographical_area_sid))
+                        self.worksheet.write(self.row_count, 17, measure.geographical_area_id)
+                        self.worksheet.write(self.row_count, 18, measure.geographical_area_description)
+                        self.worksheet.write(self.row_count, 19, measure.measure_excluded_geographical_areas_string)
+                        self.worksheet.write(self.row_count, 20, measure.measure_excluded_geographical_area_descriptions_string)
+                        self.worksheet.write(self.row_count, 21, measure.ordernumber)
+                        self.worksheet.write(self.row_count, 22, measure.quota_status)
+                        self.worksheet.write(self.row_count, 23, measure.measure_generating_regulation_id)
+                        self.worksheet.write(self.row_count, 24, measure.regulation_url)
 
-                    self.row_count += 1
+                        self.row_count += 1
+
+                    if measure.measure_type_series_id in ("A", "B"):
+                        # Comm code-related fields
+                        self.worksheet_stw.write(self.row_count_stw, 0, commodity.goods_nomenclature_item_id)
+                        self.worksheet_stw.write(self.row_count_stw, 1, commodity.description)
+
+                        # Measure-related fields
+                        self.worksheet_stw.write(self.row_count_stw, 2, str(measure.measure_sid))
+                        self.worksheet_stw.write(self.row_count_stw, 3, measure.measure_type_id)
+                        self.worksheet_stw.write(self.row_count_stw, 4, measure.measure_type_description)
+                        self.worksheet_stw.write(self.row_count_stw, 5, measure.english_duty_string)
+                        self.worksheet_stw.write(self.row_count_stw, 6, measure.validity_start_date)
+                        self.worksheet_stw.write(self.row_count_stw, 7, measure.validity_end_date)
+                        self.worksheet_stw.write(self.row_count_stw, 8, measure.condition_string_stw)
+                        self.worksheet_stw.write(self.row_count_stw, 9, measure.geographical_area_id)
+                        self.worksheet_stw.write(self.row_count_stw, 10, measure.geographical_area_description)
+                        self.worksheet_stw.write(self.row_count_stw, 11, measure.measure_excluded_geographical_areas_string)
+                        self.worksheet_stw.write(self.row_count_stw, 12, measure.measure_excluded_geographical_area_descriptions_string)
+
+                        # Special STW fields
+                        self.worksheet_stw.write(self.row_count_stw, 13, measure.trade_movement_string)
+                        measure.stw_url = measure.stw_url.replace("{{commodity}}", commodity.goods_nomenclature_item_id)
+                        self.worksheet_stw.write(self.row_count_stw, 14, measure.stw_url)
+
+                        self.row_count_stw += 1
 
     def assign_measures_to_commodities(self):
         self.start_timer("Assigning measures to commodities")
@@ -350,42 +413,48 @@ class Application(object):
         # Sort by measure SID to speed up processing in the assignment functions later
 
         if self.EXCLUDED_MEASURES != "":
+            print("using excluded measures")
             sql = """select m.*, mt.measure_type_series_id,
             mt.measure_component_applicable_code, mt.trade_movement_code, mtd.description as measure_type_description
             from utils.materialized_measures_real_end_dates m, measure_types mt, measure_type_descriptions mtd
             where m.measure_type_id = mt.measure_type_id
             and m.measure_type_id = mtd.measure_type_id
             and m.measure_type_id not in (""" + self.EXCLUDED_MEASURES + """)
+            and m.goods_nomenclature_item_id is not null
             and m.measure_type_id not in ('109', '110', '111')
             and left(goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
             and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
             and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
             order by measure_sid;"""
         elif self.INCLUDED_MEASURES == "":
+            print("all measures")
             sql = """select m.*, mt.measure_type_series_id,
             mt.measure_component_applicable_code, mt.trade_movement_code, mtd.description as measure_type_description
             from utils.materialized_measures_real_end_dates m, measure_types mt, measure_type_descriptions mtd
             where m.measure_type_id = mt.measure_type_id
             and m.measure_type_id = mtd.measure_type_id
+            and m.goods_nomenclature_item_id is not null
             and left(goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
             and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
             and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
             and m.measure_type_id not in ('109', '110', '111')
             order by measure_sid;"""
         else:
+            print("using included measures")
             sql = """select m.*, mt.measure_type_series_id,
             mt.measure_component_applicable_code, mt.trade_movement_code, mtd.description as measure_type_description
             from utils.materialized_measures_real_end_dates m, measure_types mt, measure_type_descriptions mtd
             where m.measure_type_id = mt.measure_type_id
             and m.measure_type_id = mtd.measure_type_id
-            and m.measure_type_id in (""" + self.INCLUDED_MEASURES + """)
+            and m.goods_nomenclature_item_id is not null
+            and m.measure_type_id not in ('109', '110', '111')
             and left(goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
             and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
             and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
             order by measure_sid;"""
 
         d = Database()
-        rows = d.run_query(sql.replace("\n", ""))
+        rows = d.run_query(sql.replace("\n", " "))
         for row in rows:
             measure = Measure()
             measure.measure_sid = row[0]
@@ -751,6 +820,7 @@ class Application(object):
         for row in rows:
             description = f.null_to_string(row[2]).replace(",", "")
             self.geographical_areas_friendly[row[0]] = description
+        a = 1
 
     def get_geographical_area_members(self):
         self.start_timer("Getting geographical area members")

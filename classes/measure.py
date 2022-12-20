@@ -1,5 +1,6 @@
 import sys
 from datetime import datetime, timedelta, date
+from dateutil.relativedelta import relativedelta
 import classes.globals as g
 from classes.database import Database
 
@@ -21,12 +22,91 @@ class Measure(object):
         if self.trade_movement_code == 0:
             self.is_import = True
             self.is_export = False
+            self.trade_movement_string = "Import"
         if self.trade_movement_code == 1:
             self.is_import = False
             self.is_export = True
+            self.trade_movement_string = "Export"
         else:
             self.is_import = True
             self.is_export = True
+            self.trade_movement_string = "Import / export"
+
+        self.get_geo_sample()
+        self.get_stw_url()
+
+    def get_geo_sample(self):
+        if len(self.geographical_area_id) == 2:
+            self.geo_sample = self.geographical_area_id
+        else:
+            samples = {
+                "1005": "WS",
+                "1008": "AR",
+                "1009": "KE",
+                "1011": "NO",
+                "1013": "FR",
+                "1008": "AR",
+                "1013": "FR",
+                "1014": "CH",
+                "1016": "FI",
+                "1021": "NO",
+                "1026": "IS",
+                "1030": "TZ",
+                "1032": "CI",
+                "1033": "DM",
+                "1034": "MU",
+                "1035": "SZ",
+                "1054": "MA",
+                "1080": "GG",
+                "1098": "AL",
+                "1400": "UA",
+                "1500": "MX",
+                "1501": "EC",
+                "2005": "MZ",
+                "2007": "TV",
+                "2008": "CF",
+                "2012": "LI",
+                "2014": "IS",
+                "2020": "TJ",
+                "2027": "CV",
+                "2080": "FK",
+                "2110": "LB",
+                "2200": "CR",
+                "2300": "IN",
+                "2301": "LK",
+                "2400": "IL",
+                "2500": "NA",
+                "2501": "CX",
+                "3000": "KH",
+                "3100": "NA",
+                "3500": "MD"
+            }
+            try:
+                self.geo_sample = samples[self.geographical_area_id]
+            except Exception as e:
+                self.geo_sample = "NO"
+
+    def get_stw_url(self):
+        today = date.today()
+        snapshot_date = today + relativedelta(months=+1)
+        my_year = snapshot_date.strftime("%Y")
+        my_month = snapshot_date.strftime("%m")
+        my_day = snapshot_date.strftime("%d")
+
+        a = 1
+        domain = "https://check-how-to-import-export-goods.service.gov.uk/"
+        if self.is_import is True:
+            rubric = "import/check-licences-certificates-and-other-restrictions?tradeType=import&goodsIntent=bringGoodsToSell&userTypeTrader=true&importDeclarations=yes&originCountry={{origin}}&destinationCountry=GB&importDateDay={{day}}&importDateMonth={{month}}&importDateYear={{year}}&commodity={{commodity}}"
+            rubric += "&710=notSure&750=notSure&465=notSure&475=notSure&712=notSure"
+            self.stw_url = rubric.replace("{{origin}}", self.geo_sample)
+        else:
+            rubric = "export/export-check-licences-and-restrictions?tradeType=export&exportGoodsIntent=goodsExportedToBeSoldForBusiness&tradeDateDay={{day}}&tradeDateMonth={{month}}&tradeDateYear={{year}}&exportUserTypeTrader=goodsExportedToBeSold&exportDeclarations=yes&originCountry=GB&destinationCountry={{destination}}&commodity={{commodity}}"
+            self.stw_url = rubric.replace("{{destination}}", self.geo_sample)
+
+        self.stw_url = self.stw_url.replace("{{year}}", my_year)
+        self.stw_url = self.stw_url.replace("{{month}}", my_month)
+        self.stw_url = self.stw_url.replace("{{day}}", my_day)
+        self.stw_url = domain + self.stw_url
 
     def create_measure_duties(self):
         for mc in self.measure_components:
@@ -34,7 +114,11 @@ class Measure(object):
 
     def get_additional_code_description(self):
         if self.additional_code_sid is not None:
-            self.additional_code_description = g.app.additional_codes_friendly[self.additional_code_sid]
+            try:
+                self.additional_code_description = g.app.additional_codes_friendly[self.additional_code_sid]
+            except Exception as e:
+                print(self.measure_sid)
+                sys.exit()
 
     def get_geographical_area_description(self):
         if self.geographical_area_sid is not None:
@@ -53,6 +137,7 @@ class Measure(object):
 
     def get_condition_string(self):
         self.condition_string = "|".join(str(mc.condition_string) for mc in self.measure_conditions)
+        self.condition_string_stw = "|".join(str(mc.condition_string_stw) for mc in self.measure_conditions if mc.condition_string_stw != "")
 
     def get_footnote_string(self):
         if len(self.footnotes) > 0:
