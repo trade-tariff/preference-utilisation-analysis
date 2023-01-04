@@ -15,7 +15,7 @@ class Commodity(object):
         self.hierarchy_string = ""
         self.measures = []
         self.hierarchy_sids = []
-        
+
     def cleanse_description(self):
         if self.description is None:
             self.description = g.app.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS
@@ -25,10 +25,10 @@ class Commodity(object):
                 self.description = g.app.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS
 
         self.description = self.description.replace('"', "'")
-        self.description = re.sub(r"<br>",  " ", self.description)
-        self.description = re.sub(r"\r",  " ", self.description)
-        self.description = re.sub(r"\n",  " ", self.description)
-        self.description = re.sub(r"[ ]{2,10}",  " ", self.description)
+        self.description = re.sub(r"<br>", " ", self.description)
+        self.description = re.sub(r"\r", " ", self.description)
+        self.description = re.sub(r"\n", " ", self.description)
+        self.description = re.sub(r"[ ]{2,10}", " ", self.description)
         self.description = unidecode(self.description)
 
     def get_entity_type(self):
