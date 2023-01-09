@@ -34,6 +34,7 @@ class Measure(object):
 
         self.get_geo_sample()
         self.get_stw_url()
+        self.get_ott_url()
 
     def get_geo_sample(self):
         if len(self.geographical_area_id) == 2:
@@ -85,6 +86,14 @@ class Measure(object):
                 self.geo_sample = samples[self.geographical_area_id]
             except Exception as e:
                 self.geo_sample = "NO"
+
+    def get_ott_url(self):
+        today = date.today()
+        path = "https://www.trade-tariff.service.gov.uk/commodities/{{commodity}}"
+        if self.is_import is True:
+            self.ott_url = path
+        else:
+            self.ott_url = path + "#export"
 
     def get_stw_url(self):
         today = date.today()

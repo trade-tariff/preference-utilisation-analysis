@@ -13,7 +13,7 @@ class MeasureComponent(object):
         self.measurement_unit_code = None
         self.measurement_unit_qualifier_code = None
         self.component_type = None
-        
+
         self.english_component_definition = ""
         self.duty_expression_class = None
 
@@ -26,7 +26,7 @@ class MeasureComponent(object):
         if self.measurement_unit_qualifier_code is None:
             self.measurement_unit_qualifier_code = ""
 
-        if self.duty_expression_id == "01": # Ad valorem or specific
+        if self.duty_expression_id == "01":  # Ad valorem or specific
             if self.monetary_unit_code == "":
                 self.english_component_definition += "{0:1.2f}".format(self.duty_amount) + "%"
             else:
@@ -36,7 +36,7 @@ class MeasureComponent(object):
                     if self.measurement_unit_qualifier_code != "":
                         self.english_component_definition += " / " + self.get_measurement_unit_qualifier_code()
 
-        elif self.duty_expression_id in ("04", "19", "20"): # Plus % or amount
+        elif self.duty_expression_id in ("04", "19", "20"):  # Plus % or amount
             if self.monetary_unit_code == "":
                 self.english_component_definition += " + {0:1.2f}".format(self.duty_amount) + "%"
             else:
@@ -46,10 +46,10 @@ class MeasureComponent(object):
                     if self.measurement_unit_qualifier_code != "":
                         self.english_component_definition += " / " + self.get_measurement_unit_qualifier_code()
 
-        elif self.duty_expression_id == "12": # Agri component
+        elif self.duty_expression_id == "12":  # Agri component
             self.english_component_definition += " + AC"
 
-        elif self.duty_expression_id == "15": # Minimum
+        elif self.duty_expression_id == "15":  # Minimum
             if self.monetary_unit_code == "":
                 self.english_component_definition += "MIN {0:1.2f}".format(self.duty_amount) + "%"
             else:
@@ -59,7 +59,7 @@ class MeasureComponent(object):
                     if self.measurement_unit_qualifier_code != "":
                         self.english_component_definition += " / " + self.get_measurement_unit_qualifier_code()
 
-        elif self.duty_expression_id == "17": # Maximum
+        elif self.duty_expression_id == "17":  # Maximum
             if self.monetary_unit_code == "":
                 self.english_component_definition += "MAX {0:1.2f}".format(self.duty_amount) + "%"
             else:
@@ -69,11 +69,15 @@ class MeasureComponent(object):
                     if self.measurement_unit_qualifier_code != "":
                         self.english_component_definition += " / " + self.get_measurement_unit_qualifier_code()
 
-        elif self.duty_expression_id == "21": # Sugar duty
+        elif self.duty_expression_id == "21":  # Sugar duty
             self.english_component_definition += " + SD"
 
-        elif self.duty_expression_id == "27": # Flour duty
+        elif self.duty_expression_id == "27":  # Flour duty
             self.english_component_definition += " + FD"
+
+        elif self.duty_expression_id == "99":  # Supplementary unit
+            self.english_component_definition = "{code} ({description})".format(code=self.measurement_unit_code, description=g.app.supplementary_units[self.measurement_unit_code])
+            a = 1
 
     def get_duty_expression_class(self):
         if self.duty_expression_id in ('01', '04', '19', '20'):
@@ -84,6 +88,8 @@ class MeasureComponent(object):
             self.duty_expression_class = "minimum"
         elif self.duty_expression_id in ('12', '14', '21', '25', '27', '29'):
             self.duty_expression_class = "meursing"
+        elif self.duty_expression_id in ('99'):
+            self.duty_expression_class = "suppunit"
         else:
             self.duty_expression_class = "forbidden"
 
@@ -101,7 +107,7 @@ class MeasureComponent(object):
 
     def get_measurement_unit(self, s):
         if s == "ASV":
-            return "% vol" # 3302101000
+            return "% vol"  # 3302101000
         if s == "NAR":
             return "item"
         elif s == "CCT":
@@ -117,9 +123,9 @@ class MeasureComponent(object):
         elif s == "GRM":
             return "g"
         elif s == "HLT":
-            return "hl" # 2209009100
+            return "hl"  # 2209009100
         elif s == "HMT":
-            return "100 m" # 3706909900
+            return "100 m"  # 3706909900
         elif s == "KGM":
             return "kg"
         elif s == "KLT":
@@ -163,7 +169,7 @@ class MeasureComponent(object):
         elif s == "TJO":
             return "TJ"
         elif s == "TNE":
-            return "tonne" # 1005900020
+            return "tonne"  # 1005900020
             # return "1000 kg" # 1005900020
         else:
             return s
@@ -172,25 +178,25 @@ class MeasureComponent(object):
         qualifier_description = ""
         s = self.measurement_unit_qualifier_code
         if s == "A":
-            qualifier_description = "tot alc" # Total alcohol
+            qualifier_description = "tot alc"  # Total alcohol
         elif s == "C":
-            qualifier_description = "1 000" # Total alcohol
+            qualifier_description = "1 000"  # Total alcohol
         elif s == "E":
-            qualifier_description = "net drained wt" # net of drained weight
+            qualifier_description = "net drained wt"  # net of drained weight
         elif s == "G":
-            qualifier_description = "gross" # Gross
+            qualifier_description = "gross"  # Gross
         elif s == "M":
-            qualifier_description = "net dry" # net of dry matter
+            qualifier_description = "net dry"  # net of dry matter
         elif s == "P":
-            qualifier_description = "lactic matter" # of lactic matter
+            qualifier_description = "lactic matter"  # of lactic matter
         elif s == "R":
-            qualifier_description = "std qual" # of the standard quality
+            qualifier_description = "std qual"  # of the standard quality
         elif s == "S":
             qualifier_description = " raw sugar"
         elif s == "T":
-            qualifier_description = "dry lactic matter" # of dry lactic matter
+            qualifier_description = "dry lactic matter"  # of dry lactic matter
         elif s == "X":
-            qualifier_description = " hl" # Hectolitre
+            qualifier_description = " hl"  # Hectolitre
         elif s == "Z":
-            qualifier_description = "% sacchar." # per 1% by weight of sucrose
+            qualifier_description = "% sacchar."  # per 1% by weight of sucrose
         return qualifier_description

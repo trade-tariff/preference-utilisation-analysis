@@ -52,23 +52,23 @@ class Application(object):
             self.INCLUDED_MEASURES_ARRAY = self.INCLUDED_MEASURES.split(",")
             self.INCLUDED_MEASURES = "'" + "', '".join(self.INCLUDED_MEASURES_ARRAY) + "'"
             print("\n\n")
-            questions = [
-                inquirer.Confirm("stop", message="Are you sure that you want to generate this file for selected measures?", default=True),
-            ]
-            answers = inquirer.prompt(questions)
-            if answers["stop"] is False:
-                init(autoreset=True)
-                print(Style.NORMAL + Fore.YELLOW + "\nStopping running the session\n\n".upper())
-                print(Style.NORMAL + Fore.WHITE)
-                sys.exit()
-            else:
-                print(Style.BRIGHT + Fore.YELLOW + "\nCarrying on with the session\n\n".upper())
-                print(Style.NORMAL + Fore.WHITE)
+            # questions = [
+            #     inquirer.Confirm("stop", message="Are you sure that you want to generate this file for selected measures?", default=True),
+            # ]
+            # answers = inquirer.prompt(questions)
+            # if answers["stop"] is False:
+            #     init(autoreset=True)
+            #     print(Style.NORMAL + Fore.YELLOW + "\nStopping running the session\n\n".upper())
+            #     print(Style.NORMAL + Fore.WHITE)
+            #     sys.exit()
+            # else:
+            #     print(Style.BRIGHT + Fore.YELLOW + "\nCarrying on with the session\n\n".upper())
+            #     print(Style.NORMAL + Fore.WHITE)
 
         self.PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS = os.getenv('PLACEHOLDER_FOR_EMPTY_DESCRIPTIONS')
         self.write_to_aws = int(os.getenv('WRITE_TO_AWS'))
 
-        if "testmail" not in sys.argv[0]:
+        if "test" not in sys.argv[0]:
             # Check whether UK or XI
             if ("dest" not in sys.argv[0]):
                 self.get_scope()
@@ -90,8 +90,8 @@ class Application(object):
         self.file_only = self.MEASURES_FILENAME + "_{dt}.xlsx".format(dt=self.SNAPSHOT_DATE)
         self.filename = os.path.join(self.dated_folder, self.file_only)
 
-        self.file_only = self.STW_FILENAME + "_{dt}.xlsx".format(dt=self.SNAPSHOT_DATE)
-        self.stw_filename = os.path.join(self.dated_folder, self.file_only)
+        self.stw_file_only = self.STW_FILENAME + "_{dt}.xlsx".format(dt=self.SNAPSHOT_DATE)
+        self.stw_filename = os.path.join(self.dated_folder, self.stw_file_only)
 
         self.geo_file_only = "trade_groups_{dt}.xlsx".format(dt=self.SNAPSHOT_DATE)
         self.geo_filename = os.path.join(self.dated_folder, self.geo_file_only)
@@ -168,8 +168,9 @@ class Application(object):
             ["measure__geographical_area__description", 20],
             ["measure__excluded_geographical_areas__ids", 20],
             ["measure__excluded_geographical_areas__descriptions", 20],
-            ["trade_direction", 20],
-            ["url", 150]
+            ["trade__direction", 20],
+            ["stw__url", 150],
+            ["ott__url", 100]
         ]
         for field, column_width in (fields):
             column_string = chr(col + 65) + ":" + chr(col + 65)
@@ -241,7 +242,7 @@ class Application(object):
         self.workbook_stw.close()
 
         self.end_timer("Saving file")
-        # self.load_and_mail()
+        self.load_and_mail()
 
     def load_and_mail(self):
         # Load to AWS (main measures file)
@@ -254,7 +255,12 @@ class Application(object):
         aws_path = self.GEO_FILENAME + "/" + self.geo_file_only
         url2 = self.load_to_aws("Loading trade groups file " + self.SNAPSHOT_DATE, my_file, aws_path)
 
-        # Send the email
+        # Load to AWS (STW test file)
+        my_file = os.path.join(os.getcwd(), "_export", self.SNAPSHOT_DATE, self.stw_filename)
+        aws_path = self.STW_FILENAME + "/" + self.stw_file_only
+        url3 = self.load_to_aws("Loading STW test file " + self.SNAPSHOT_DATE, my_file, aws_path)
+
+        # Send the email (Prefs)
         if url is not None:
             subject = "Preference utilisation analysis file for " + self.SNAPSHOT_DATE
             content = "<p>Hello,</p>"
@@ -262,8 +268,21 @@ class Application(object):
             content += "The preference utilisation analysis file for " + self.SNAPSHOT_DATE + " has been uploaded to this location:</p><p>" + url + "</p>"
 
             content += "<p><b>Trade groups file</b><br>"
-            content += "The trade groups file for " + self.SNAPSHOT_DATE + " has been uploaded to this location:</p><p>" + url2 + "</p>"
+            content += "The trade groups file for " + self.SNAPSHOT_DATE + " has been uploaded to this location:</p><p><a href='" + url2 + "'>" + url2 + "</a></p>"
             content += "<p>Thank you.</p>"
+            content += "<p>The Online Tariff team.</p>"
+            attachment_list = []
+            self.send_email_message(subject, content, attachment_list)
+
+        # Send the email (STW)
+        if url3 is not None:
+            subject = "STW Guidance Service measures for " + self.SNAPSHOT_DATE
+            content = "<p>Hello,</p>"
+            content += "<p>A list of measures available on the STW Guidance Service has been developed for " + self.SNAPSHOT_DATE
+            content += " and has been uploaded to this location:</p><p><a href='" + url3 + "'>" + url3 + "</a></p>"
+
+            content += "<p>Thank you.</p>"
+            content += "<p>The Online Tariff team.</p>"
             attachment_list = []
             self.send_email_message(subject, content, attachment_list)
 
@@ -310,10 +329,13 @@ class Application(object):
         for commodity in self.commodities:
             if commodity.leaf == 1:
                 for measure in commodity.measures:
-                    # Write Don's data
+                    # Write Trade Stats data
                     if measure.measure_type_id in self.INCLUDED_MEASURES_ARRAY:
                         # Index
                         self.worksheet.write(self.row_count, 0, str(self.row_count))
+
+                        if measure.measure_sid == 2982599:
+                            a = 1
 
                         # Comm code-related fields
                         self.worksheet.write(self.row_count, 1, str(commodity.goods_nomenclature_sid))
@@ -365,8 +387,14 @@ class Application(object):
 
                         # Special STW fields
                         self.worksheet_stw.write(self.row_count_stw, 13, measure.trade_movement_string)
-                        measure.stw_url = measure.stw_url.replace("{{commodity}}", commodity.goods_nomenclature_item_id)
-                        self.worksheet_stw.write(self.row_count_stw, 14, measure.stw_url)
+
+                        # STW URL
+                        measure.stw_url2 = measure.stw_url.replace("{{commodity}}", commodity.goods_nomenclature_item_id)
+                        self.worksheet_stw.write(self.row_count_stw, 14, measure.stw_url2)
+
+                        # OTT URL
+                        measure.ott_url2 = measure.ott_url.replace("{{commodity}}", commodity.goods_nomenclature_item_id)
+                        self.worksheet_stw.write(self.row_count_stw, 15, measure.ott_url2)
 
                         self.row_count_stw += 1
 
@@ -437,7 +465,6 @@ class Application(object):
             and left(goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
             and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
             and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-            and m.measure_type_id not in ('109', '110', '111')
             order by measure_sid;"""
         else:
             print("using included measures")
@@ -447,7 +474,6 @@ class Application(object):
             where m.measure_type_id = mt.measure_type_id
             and m.measure_type_id = mtd.measure_type_id
             and m.goods_nomenclature_item_id is not null
-            and m.measure_type_id not in ('109', '110', '111')
             and left(goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
             and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
             and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
@@ -757,7 +783,19 @@ class Application(object):
         self.get_geographical_areas_friendly()
         self.get_geographical_area_members()
         self.get_additional_codes_friendly()
+        self.get_supplementary_units()
         self.get_base_regulations()
+
+    def get_supplementary_units(self):
+        sql = """
+        select mud.measurement_unit_code, mud.description
+        from measurement_unit_descriptions mud
+        order by 1"""
+        self.supplementary_units = {}
+        d = Database()
+        rows = d.run_query(sql)
+        for row in rows:
+            self.supplementary_units[row[0]] = row[1]
 
     def get_measure_types_friendly(self):
         sql = """select mt.measure_type_id, mtd.description
