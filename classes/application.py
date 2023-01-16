@@ -246,17 +246,17 @@ class Application(object):
 
     def load_and_mail(self):
         # Load to AWS (main measures file)
-        my_file = os.path.join(os.getcwd(), "_export", self.SNAPSHOT_DATE, self.file_only)
+        my_file = os.path.join(os.getcwd(), "_export", self.scope, self.SNAPSHOT_DATE, self.file_only)
         aws_path = self.MEASURES_FILENAME + "/" + self.file_only
         url = self.load_to_aws("Loading preference utilisation analysis file " + self.SNAPSHOT_DATE, my_file, aws_path)
 
         # Load to AWS (members file)
-        my_file = os.path.join(os.getcwd(), "_export", self.SNAPSHOT_DATE, self.geo_file_only)
+        my_file = os.path.join(os.getcwd(), "_export", self.scope, self.SNAPSHOT_DATE, self.geo_file_only)
         aws_path = self.GEO_FILENAME + "/" + self.geo_file_only
         url2 = self.load_to_aws("Loading trade groups file " + self.SNAPSHOT_DATE, my_file, aws_path)
 
         # Load to AWS (STW test file)
-        my_file = os.path.join(os.getcwd(), "_export", self.SNAPSHOT_DATE, self.stw_filename)
+        my_file = os.path.join(os.getcwd(), "_export", self.scope, self.SNAPSHOT_DATE, self.stw_filename)
         aws_path = self.STW_FILENAME + "/" + self.stw_file_only
         url3 = self.load_to_aws("Loading STW test file " + self.SNAPSHOT_DATE, my_file, aws_path)
 
@@ -711,7 +711,8 @@ class Application(object):
         self.day = date_time_obj.strftime("%d")
 
         self.date_string = self.year + "-" + self.month2 + "-" + self.day
-        self.dated_folder = os.path.join(self.export_folder, self.date_string)
+        self.scope_folder = os.path.join(self.export_folder, self.scope)
+        self.dated_folder = os.path.join(self.scope_folder, self.date_string)
         os.makedirs(self.dated_folder, exist_ok=True)
 
         # Under the date-specific folder, also make a scope (UK/XI) folder
@@ -751,6 +752,8 @@ class Application(object):
         # whether to process UK or EU data
         if len(sys.argv) > 1:
             self.scope = sys.argv[1].lower()
+            if self.scope == "eu":
+                self.scope = "xi"
         else:
             print("Please specify the country scope (uk or xi)")
             sys.exit()

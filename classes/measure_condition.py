@@ -3,6 +3,10 @@ class MeasureCondition(object):
         self.measure_sid = None
 
     def get_condition_string(self):
+        # Set action code to empty string if it is empty
+        if self.action_code is None:
+            self.action_code = ""
+
         s = "condition:"
         s += self.condition_code + ","
         if self.certificate_type_code != "":
