@@ -102,7 +102,6 @@ class Measure(object):
         my_month = snapshot_date.strftime("%m")
         my_day = snapshot_date.strftime("%d")
 
-        a = 1
         domain = "https://check-how-to-import-export-goods.service.gov.uk/"
         if self.is_import is True:
             rubric = "import/check-licences-certificates-and-other-restrictions?tradeType=import&goodsIntent=bringGoodsToSell&userTypeTrader=true&importDeclarations=yes&originCountry={{origin}}&destinationCountry=GB&importDateDay={{day}}&importDateMonth={{month}}&importDateYear={{year}}&commodity={{commodity}}"
@@ -138,17 +137,23 @@ class Measure(object):
             self.measure_excluded_geographical_areas_string = "|".join(str(mega.excluded_geographical_area) for mega in self.measure_excluded_geographical_areas)
             self.measure_excluded_geographical_area_descriptions_string = "|".join(str(mega.geographical_area_description) for mega in self.measure_excluded_geographical_areas)
 
-    def get_regulation_url(self):
+    def get_regulation_details(self):
         if self.measure_generating_regulation_id in g.app.base_regulations:
-            self.regulation_url = g.app.base_regulations[self.measure_generating_regulation_id]
+            self.regulation_url = g.app.base_regulations[self.measure_generating_regulation_id]["url"]
+            self.regulation_group_id = g.app.base_regulations[self.measure_generating_regulation_id]["regulation_group_id"]
+            a = 1
         else:
             self.regulation_url = ""
+            self.regulation_group_id = ""
 
     def get_condition_string(self):
         self.condition_string = "|".join(str(mc.condition_string) for mc in self.measure_conditions)
         self.condition_string_stw = "|".join(str(mc.condition_string_stw) for mc in self.measure_conditions if mc.condition_string_stw != "")
 
     def get_footnote_string(self):
+        if self.measure_sid == -1011994528:
+            a = 1
+
         if len(self.footnotes) > 0:
             self.footnotes_string = "|".join(str(f.footnote) for f in self.footnotes)
 
@@ -234,6 +239,35 @@ class Measure(object):
                 # If there are no definitions at all, set the quota status to "Open" instead
                 self.quota_status = "Invalid"
 
+    def get_regulation_state(self):
+        self.regulation_state = ""
+
+        affected_measure_types = ["103", "105"]
+        suspension_code_types = ["2500", "2600", "2700"]
+        mfn_code_types = ["2501", "2601", "2701", "2702", "2704"]
+
+        if self.measure_type_id in affected_measure_types:
+            if self.geographical_area_id in ["1011", "1008"]:
+                if self.additional_code == "":
+                    # No add code - most measures
+                    if self.regulation_group_id == "DNC":
+                        self.regulation_state = "State 1 GOOD - MFN with a MFN regulation group"
+                    else:
+                        self.regulation_state = "State 2 BAD  - MFN with a non-MFN regulation group"
+
+                elif self.additional_code in suspension_code_types:
+                    if self.regulation_group_id == "SUS":
+                        self.regulation_state = "State 5 GOOD - Suspension with a SUS regulation group"
+                    else:
+                        self.regulation_state = "State 6 BAD  - Suspension with a non-SUS regulation group"
+
+                elif self.additional_code in mfn_code_types:
+                    if self.regulation_group_id == "DNC":
+                        self.regulation_state = "State 3 GOOD - MFN with add code with a MFN regulation group"
+                    else:
+                        self.regulation_state = "State 4 BAD  - MFN with add code with a non-MFN regulation group"
+            else:
+                self.regulation_state = ""
 
 class Definition(object):
     def __init__(self, validity_start_date, validity_end_date):

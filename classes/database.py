@@ -23,6 +23,7 @@ class Database:
                 self.database_url = os.getenv('DATABASE_UK')
 
         self.conn = None
+        # self.database_url = os.getenv('DATABASE_EU')
 
     def open_connection(self):
         """Connect to a Postgres database."""

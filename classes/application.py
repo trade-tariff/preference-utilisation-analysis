@@ -36,6 +36,7 @@ class Application(object):
         self.MEASURES_FILENAME = os.getenv('MEASURES_FILENAME')
         self.STW_FILENAME = os.getenv('STW_FILENAME')
         self.GEO_FILENAME = os.getenv('GEO_FILENAME')
+        self.TARIFF_DATA_BASIC = os.getenv('TARIFF_DATA_BASIC')
 
         # These are only really used for testing purposes
         self.INCLUDED_MEASURES = os.getenv('INCLUDED_MEASURES')
@@ -96,13 +97,27 @@ class Application(object):
         self.geo_file_only = "trade_groups_{dt}.xlsx".format(dt=self.SNAPSHOT_DATE)
         self.geo_filename = os.path.join(self.dated_folder, self.geo_file_only)
 
+        self.tariff_data_basic_file_only = self.TARIFF_DATA_BASIC + "_{dt}.csv".format(dt=self.SNAPSHOT_DATE)
+        self.tariff_data_basic_filename = os.path.join(self.dated_folder, self.tariff_data_basic_file_only)
+        a = 1
+
     def create_preference_utilisation_analysis(self):
         self.get_reference_data()
         self.write_geographical_area_members()
         self.get_quota_balances()
         self.get_quotas()
         self.assign_quota_balances()
+        self.get_hidden_goods_nomenclatures()
         self.get_commodities()
+
+    def get_hidden_goods_nomenclatures(self):
+        self.hidden_goods_nomenclatures = []
+        print("Getting hidden goods_nomenclatures")
+        d = Database()
+        sql = "select distinct goods_nomenclature_item_id from hidden_goods_nomenclatures order by 1"
+        rows = d.run_query(sql)
+        for row in rows:
+            self.hidden_goods_nomenclatures.append(row[0])
 
     def get_commodities(self):
         # Create the Excel document right at the start
@@ -115,6 +130,9 @@ class Application(object):
 
         self.worksheet = self.workbook.add_worksheet(self.SNAPSHOT_DATE)
         self.worksheet_stw = self.workbook_stw.add_worksheet(self.SNAPSHOT_DATE)
+
+        self.basic_file = open(self.tariff_data_basic_filename, "w")
+        self.basic_file.write("Commodity code,Description,Third country duty,Supplementary unit\n")
 
         # PUA fields
         fields = [
@@ -142,12 +160,26 @@ class Application(object):
             ["measure__quota__order_number", 20],
             ["measure__quota__available", 20],
             ["measure__regulation__id", 20],
-            ["measure__regulation__url", 20]
+            ["measure__regulation__url", 30]
         ]
+
+        """
+        ,
+            ["measure__regulation__group_id", 30],
+            ["regulation_measure_state", 55],
+            ["count_103", 20],
+            ["count_mfn", 20],
+            ["count_sus", 20],
+            ["count_bare", 20]
+        """
 
         col = 0
         for field, column_width in (fields):
-            column_string = chr(col + 65) + ":" + chr(col + 65)
+            if col > 25:
+                col2 = "A" + chr((col % 26) + 65)
+                column_string = col2 + ":" + col2
+            else:
+                column_string = chr(col + 65) + ":" + chr(col + 65)
             self.worksheet.set_column(column_string, column_width)
             self.worksheet.write(0, col, field, self.bold)
             col += 1
@@ -186,10 +218,12 @@ class Application(object):
             self.commodities = []
             self.get_measure_components(i)
             self.get_measure_conditions(i)
+            self.get_footnotes(i)
             self.get_measure_excluded_geographical_areas(i)
             self.get_measures(i)
             self.assign_measure_components_to_measures()
             self.assign_measure_conditions_to_measures()
+            self.assign_footnotes_to_measures()
             self.get_condition_strings()
             self.assign_measure_excluded_geographical_areas()
             self.get_quota_statuses()
@@ -241,23 +275,27 @@ class Application(object):
         self.worksheet_stw.autofilter('A1:O' + str(self.row_count_stw))
         self.workbook_stw.close()
 
+        self.start_timer("Saving basic tariff file")
+        self.basic_file.close()
+
         self.end_timer("Saving file")
         self.load_and_mail()
 
     def load_and_mail(self):
+        pua_folder = "preference_utilisation"
         # Load to AWS (main measures file)
         my_file = os.path.join(os.getcwd(), "_export", self.scope, self.SNAPSHOT_DATE, self.file_only)
-        aws_path = os.path.join(self.scope, self.MEASURES_FILENAME, self.file_only)
+        aws_path = os.path.join(self.scope, pua_folder, self.MEASURES_FILENAME, self.file_only)
         url = self.load_to_aws("Loading preference utilisation analysis file " + self.SNAPSHOT_DATE, my_file, aws_path)
 
         # Load to AWS (members file)
         my_file = os.path.join(os.getcwd(), "_export", self.scope, self.SNAPSHOT_DATE, self.geo_file_only)
-        aws_path = os.path.join(self.scope, self.GEO_FILENAME, self.geo_file_only)
+        aws_path = os.path.join(self.scope, pua_folder, self.GEO_FILENAME, self.geo_file_only)
         url2 = self.load_to_aws("Loading trade groups file " + self.SNAPSHOT_DATE, my_file, aws_path)
 
         # Load to AWS (STW test file)
         my_file = os.path.join(os.getcwd(), "_export", self.scope, self.SNAPSHOT_DATE, self.stw_filename)
-        aws_path = os.path.join(self.scope, self.STW_FILENAME, self.stw_file_only)
+        aws_path = os.path.join(self.scope, pua_folder, self.STW_FILENAME, self.stw_file_only)
         url3 = self.load_to_aws("Loading STW test file " + self.SNAPSHOT_DATE, my_file, aws_path)
 
         # Send the email (Prefs)
@@ -301,17 +339,29 @@ class Application(object):
     def get_footnotes(self, i):
         self.start_timer("Getting footnotes")
         self.footnotes = []
-        sql = """select m.measure_sid, f.footnote_type_id || f.footnote_id  as footnote
-        from footnotes f, footnote_association_measures fam, measures m
-        where fam.footnote_type_id = f.footnote_type_id
-        and fam.footnote_id = f.footnote_id
-        and fam.measure_sid = m.measure_sid
-        and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
-        and left(m.goods_nomenclature_item_id, 1) = '""" + str(i) + """'
+        # sql = """select m.measure_sid, f.footnote_type_id || f.footnote_id  as footnote
+        # from footnotes f, footnote_association_measures fam, measures m
+        # where fam.footnote_type_id = f.footnote_type_id
+        # and fam.footnote_id = f.footnote_id
+        # and fam.measure_sid = m.measure_sid
+        # and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
+        # and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
+        # and left(m.goods_nomenclature_item_id, 1) = '""" + str(i) + """'
+        # """
+
+        sql = """select measure_sid, footnote
+        from utils.materialized_measure_footnotes
+        where validity_start_date <= %s
+        and validity_end_date is null
+        and left(goods_nomenclature_item_id, 1) = %s
         """
+
         d = Database()
-        rows = d.run_query(sql.replace("\n", ""))
+        params = [
+            self.SNAPSHOT_DATE,
+            str(i)
+        ]
+        rows = d.run_query(sql.replace("\n", ""), params)
         for row in rows:
             footnote = Footnote()
             footnote.measure_sid = row[0]
@@ -327,76 +377,98 @@ class Application(object):
 
     def extract_data(self):
         for commodity in self.commodities:
-            if commodity.leaf == 1:
-                for measure in commodity.measures:
-                    # Write Trade Stats data
-                    if measure.measure_type_id in self.INCLUDED_MEASURES_ARRAY:
-                        # Index
-                        self.worksheet.write(self.row_count, 0, str(self.row_count))
+            if commodity.goods_nomenclature_item_id == "9931270000":
+                a = 1
+            if commodity.goods_nomenclature_item_id not in self.hidden_goods_nomenclatures:
+                commodity.count_103s()
+                commodity.get_supplementary_unit()
+                if commodity.leaf == 1:
+                    for measure in commodity.measures:
+                        # Write Trade Stats data
+                        if measure.measure_type_id in self.INCLUDED_MEASURES_ARRAY:
+                            measure.get_regulation_state()
+                            # Index
+                            self.worksheet.write(self.row_count, 0, str(self.row_count))
 
-                        if measure.measure_sid == 2982599:
-                            a = 1
+                            # Comm code-related fields
+                            self.worksheet.write(self.row_count, 1, str(commodity.goods_nomenclature_sid))
+                            self.worksheet.write(self.row_count, 2, commodity.goods_nomenclature_item_id)
+                            self.worksheet.write(self.row_count, 3, str(commodity.number_indents))
+                            self.worksheet.write(self.row_count, 4, commodity.description)
 
-                        # Comm code-related fields
-                        self.worksheet.write(self.row_count, 1, str(commodity.goods_nomenclature_sid))
-                        self.worksheet.write(self.row_count, 2, commodity.goods_nomenclature_item_id)
-                        self.worksheet.write(self.row_count, 3, str(commodity.number_indents))
-                        self.worksheet.write(self.row_count, 4, commodity.description)
+                            # Measure-related fields
+                            self.worksheet.write(self.row_count, 5, str(measure.measure_sid))
+                            self.worksheet.write(self.row_count, 6, measure.measure_type_id)
+                            self.worksheet.write(self.row_count, 7, measure.measure_type_description)
+                            self.worksheet.write(self.row_count, 8, measure.additional_code)
+                            self.worksheet.write(self.row_count, 9, measure.additional_code_description)
+                            self.worksheet.write(self.row_count, 10, measure.english_duty_string)
+                            self.worksheet.write(self.row_count, 11, measure.validity_start_date)
+                            self.worksheet.write(self.row_count, 12, measure.validity_end_date)
+                            self.worksheet.write(self.row_count, 13, f.process_null(measure.reduction_indicator))
+                            self.worksheet.write(self.row_count, 14, measure.footnotes_string)
+                            self.worksheet.write(self.row_count, 15, measure.condition_string)
+                            self.worksheet.write(self.row_count, 16, str(measure.geographical_area_sid))
+                            self.worksheet.write(self.row_count, 17, measure.geographical_area_id)
+                            self.worksheet.write(self.row_count, 18, measure.geographical_area_description)
+                            self.worksheet.write(self.row_count, 19, measure.measure_excluded_geographical_areas_string)
+                            self.worksheet.write(self.row_count, 20, measure.measure_excluded_geographical_area_descriptions_string)
+                            self.worksheet.write(self.row_count, 21, measure.ordernumber)
+                            self.worksheet.write(self.row_count, 22, measure.quota_status)
+                            self.worksheet.write(self.row_count, 23, measure.measure_generating_regulation_id)
+                            self.worksheet.write(self.row_count, 24, measure.regulation_url)
+                            # self.worksheet.write(self.row_count, 25, measure.regulation_group_id)
+                            # self.worksheet.write(self.row_count, 26, measure.regulation_state)
+                            # self.worksheet.write(self.row_count, 27, commodity.count_103)
+                            # self.worksheet.write(self.row_count, 28, commodity.count_mfn)
+                            # self.worksheet.write(self.row_count, 29, commodity.count_sus)
+                            # self.worksheet.write(self.row_count, 30, commodity.count_naked)
 
-                        # Measure-related fields
-                        self.worksheet.write(self.row_count, 5, str(measure.measure_sid))
-                        self.worksheet.write(self.row_count, 6, measure.measure_type_id)
-                        self.worksheet.write(self.row_count, 7, measure.measure_type_description)
-                        self.worksheet.write(self.row_count, 8, measure.additional_code)
-                        self.worksheet.write(self.row_count, 9, measure.additional_code_description)
-                        self.worksheet.write(self.row_count, 10, measure.english_duty_string)
-                        self.worksheet.write(self.row_count, 11, measure.validity_start_date)
-                        self.worksheet.write(self.row_count, 12, measure.validity_end_date)
-                        self.worksheet.write(self.row_count, 13, f.process_null(measure.reduction_indicator))
-                        self.worksheet.write(self.row_count, 14, measure.footnotes_string)
-                        self.worksheet.write(self.row_count, 15, measure.condition_string)
-                        self.worksheet.write(self.row_count, 16, str(measure.geographical_area_sid))
-                        self.worksheet.write(self.row_count, 17, measure.geographical_area_id)
-                        self.worksheet.write(self.row_count, 18, measure.geographical_area_description)
-                        self.worksheet.write(self.row_count, 19, measure.measure_excluded_geographical_areas_string)
-                        self.worksheet.write(self.row_count, 20, measure.measure_excluded_geographical_area_descriptions_string)
-                        self.worksheet.write(self.row_count, 21, measure.ordernumber)
-                        self.worksheet.write(self.row_count, 22, measure.quota_status)
-                        self.worksheet.write(self.row_count, 23, measure.measure_generating_regulation_id)
-                        self.worksheet.write(self.row_count, 24, measure.regulation_url)
+                            self.row_count += 1
 
-                        self.row_count += 1
+                        if measure.measure_type_series_id in ("A", "B"):
+                            # Comm code-related fields
+                            self.worksheet_stw.write(self.row_count_stw, 0, commodity.goods_nomenclature_item_id)
+                            self.worksheet_stw.write(self.row_count_stw, 1, commodity.description)
 
-                    if measure.measure_type_series_id in ("A", "B"):
-                        # Comm code-related fields
-                        self.worksheet_stw.write(self.row_count_stw, 0, commodity.goods_nomenclature_item_id)
-                        self.worksheet_stw.write(self.row_count_stw, 1, commodity.description)
+                            # Measure-related fields
+                            self.worksheet_stw.write(self.row_count_stw, 2, str(measure.measure_sid))
+                            self.worksheet_stw.write(self.row_count_stw, 3, measure.measure_type_id)
+                            self.worksheet_stw.write(self.row_count_stw, 4, measure.measure_type_description)
+                            self.worksheet_stw.write(self.row_count_stw, 5, measure.english_duty_string)
+                            self.worksheet_stw.write(self.row_count_stw, 6, measure.validity_start_date)
+                            self.worksheet_stw.write(self.row_count_stw, 7, measure.validity_end_date)
+                            self.worksheet_stw.write(self.row_count_stw, 8, measure.condition_string_stw)
+                            self.worksheet_stw.write(self.row_count_stw, 9, measure.geographical_area_id)
+                            self.worksheet_stw.write(self.row_count_stw, 10, measure.geographical_area_description)
+                            self.worksheet_stw.write(self.row_count_stw, 11, measure.measure_excluded_geographical_areas_string)
+                            self.worksheet_stw.write(self.row_count_stw, 12, measure.measure_excluded_geographical_area_descriptions_string)
 
-                        # Measure-related fields
-                        self.worksheet_stw.write(self.row_count_stw, 2, str(measure.measure_sid))
-                        self.worksheet_stw.write(self.row_count_stw, 3, measure.measure_type_id)
-                        self.worksheet_stw.write(self.row_count_stw, 4, measure.measure_type_description)
-                        self.worksheet_stw.write(self.row_count_stw, 5, measure.english_duty_string)
-                        self.worksheet_stw.write(self.row_count_stw, 6, measure.validity_start_date)
-                        self.worksheet_stw.write(self.row_count_stw, 7, measure.validity_end_date)
-                        self.worksheet_stw.write(self.row_count_stw, 8, measure.condition_string_stw)
-                        self.worksheet_stw.write(self.row_count_stw, 9, measure.geographical_area_id)
-                        self.worksheet_stw.write(self.row_count_stw, 10, measure.geographical_area_description)
-                        self.worksheet_stw.write(self.row_count_stw, 11, measure.measure_excluded_geographical_areas_string)
-                        self.worksheet_stw.write(self.row_count_stw, 12, measure.measure_excluded_geographical_area_descriptions_string)
+                            # Special STW fields
+                            self.worksheet_stw.write(self.row_count_stw, 13, measure.trade_movement_string)
 
-                        # Special STW fields
-                        self.worksheet_stw.write(self.row_count_stw, 13, measure.trade_movement_string)
+                            # STW URL
+                            measure.stw_url2 = measure.stw_url.replace("{{commodity}}", commodity.goods_nomenclature_item_id)
+                            self.worksheet_stw.write(self.row_count_stw, 14, measure.stw_url2)
 
-                        # STW URL
-                        measure.stw_url2 = measure.stw_url.replace("{{commodity}}", commodity.goods_nomenclature_item_id)
-                        self.worksheet_stw.write(self.row_count_stw, 14, measure.stw_url2)
+                            # OTT URL
+                            measure.ott_url2 = measure.ott_url.replace("{{commodity}}", commodity.goods_nomenclature_item_id)
+                            self.worksheet_stw.write(self.row_count_stw, 15, measure.ott_url2)
 
-                        # OTT URL
-                        measure.ott_url2 = measure.ott_url.replace("{{commodity}}", commodity.goods_nomenclature_item_id)
-                        self.worksheet_stw.write(self.row_count_stw, 15, measure.ott_url2)
+                            self.row_count_stw += 1
 
-                        self.row_count_stw += 1
+                    Q = '"'
+                    self.basic_file.write(Q + commodity.goods_nomenclature_item_id + Q)
+                    self.basic_file.write(",")
+                    self.basic_file.write(Q + commodity.description.replace('"', "'") + Q)
+                    self.basic_file.write(",")
+                    if commodity.primary_third_country_duty is not None:
+                        self.basic_file.write(Q + commodity.primary_third_country_duty.english_duty_string + Q)
+                    else:
+                        self.basic_file.write(Q + Q)
+                    self.basic_file.write(",")
+                    self.basic_file.write(Q + commodity.supplementary_unit_string + Q)
+                    self.basic_file.write("\n")
 
     def assign_measures_to_commodities(self):
         self.start_timer("Assigning measures to commodities")
@@ -510,8 +582,7 @@ class Application(object):
             measure.get_import_export()
             measure.get_additional_code_description()
             measure.get_geographical_area_description()
-            measure.get_regulation_url()
-            measure.get_footnote_string()
+            measure.get_regulation_details()
 
             self.measures.append(measure)
 
@@ -568,7 +639,6 @@ class Application(object):
         self.end_timer("Assigning measure conditions to measures")
 
     def assign_footnotes_to_measures(self):
-        return
         self.start_timer("Assigning footnotes to measures")
         start_point = 0
         for footnote in self.footnotes:
@@ -578,6 +648,9 @@ class Application(object):
                     start_point = i
                     measure.footnotes.append(footnote)
                     break
+
+        for measure in self.measures:
+            measure.get_footnote_string()
 
         self.end_timer("Assigning footnotes to measures")
 
@@ -591,7 +664,7 @@ class Application(object):
         where m.measure_sid = mc.measure_sid
         and left(m.goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
         and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and (m.validity_end_date is null or m.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
+        and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
         order by m.measure_sid, mc.duty_expression_id;"""
         d = Database()
         rows = d.run_query(sql)
@@ -830,9 +903,9 @@ class Application(object):
 
     def get_base_regulations(self):
         sql = """
-        select base_regulation_id, information_text n
-        from base_regulations br where information_text ilike '%http%'
-        order by 2;
+        select base_regulation_id, information_text n, regulation_group_id
+        from base_regulations br
+        order by 1;
         """
         self.base_regulations = {}
         d = Database()
@@ -840,8 +913,13 @@ class Application(object):
         for row in rows:
             base_regulation_id = row[0]
             information_text = f.null_to_string(row[1])
-            information_text = f.process_url(information_text)
-            self.base_regulations[base_regulation_id] = information_text
+            url = f.process_url(information_text)
+            regulation_group_id = row[2]
+
+            self.base_regulations[base_regulation_id] = {
+                "url": url,
+                "regulation_group_id": regulation_group_id
+            }
 
     def get_geographical_areas_friendly(self):
         sql = """SELECT g.geographical_area_sid,
