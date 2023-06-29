@@ -339,15 +339,6 @@ class Application(object):
     def get_footnotes(self, i):
         self.start_timer("Getting footnotes")
         self.footnotes = []
-        # sql = """select m.measure_sid, f.footnote_type_id || f.footnote_id  as footnote
-        # from footnotes f, footnote_association_measures fam, measures m
-        # where fam.footnote_type_id = f.footnote_type_id
-        # and fam.footnote_id = f.footnote_id
-        # and fam.measure_sid = m.measure_sid
-        # and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        # and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
-        # and left(m.goods_nomenclature_item_id, 1) = '""" + str(i) + """'
-        # """
 
         sql = """select measure_sid, footnote
         from utils.materialized_measure_footnotes
@@ -493,16 +484,12 @@ class Application(object):
 
     def sort_measures(self):
         self.start_timer("Sorting measures")
-        self.measures.sort(key=lambda x: (
-            x.additional_code_id is None, x.additional_code_id), reverse=False)
-        self.measures.sort(key=lambda x: (
-            x.additional_code_type_id is None, x.additional_code_type_id), reverse=False)
-        self.measures.sort(key=lambda x: (
-            x.ordernumber is None, x.ordernumber), reverse=False)
+        self.measures.sort(key=lambda x: (x.additional_code_id is None, x.additional_code_id), reverse=False)
+        self.measures.sort(key=lambda x: (x.additional_code_type_id is None, x.additional_code_type_id), reverse=False)
+        self.measures.sort(key=lambda x: (x.ordernumber is None, x.ordernumber), reverse=False)
         self.measures.sort(key=lambda x: x.geographical_area_id, reverse=False)
         self.measures.sort(key=lambda x: x.measure_type_id, reverse=False)
-        self.measures.sort(
-            key=lambda x: x.goods_nomenclature_item_id, reverse=False)
+        self.measures.sort(key=lambda x: x.goods_nomenclature_item_id, reverse=False)
         self.end_timer("Sorting measures")
 
     def get_measures(self, iteration):
