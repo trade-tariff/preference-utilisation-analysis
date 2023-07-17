@@ -286,6 +286,16 @@ class Application(object):
         # Load to AWS (main measures file)
         my_file = os.path.join(os.getcwd(), "_export", self.scope, self.SNAPSHOT_DATE, self.file_only)
         aws_path = os.path.join(self.scope, pua_folder, self.MEASURES_FILENAME, self.file_only)
+        aws_path = os.path.join(
+            self.scope,
+            "reporting",
+            self.SNAPSHOT_YEAR,
+            self.SNAPSHOT_MONTH,
+            self.SNAPSHOT_DAY,
+            "preference_utilisation",
+            self.file_only
+        )
+        a = 1
         url = self.load_to_aws("Loading preference utilisation analysis file " + self.SNAPSHOT_DATE, my_file, aws_path)
 
         # Load to AWS (members file)
@@ -796,8 +806,7 @@ class Application(object):
             try:
                 datetime.strptime(d, date_format)
                 self.SNAPSHOT_DATE = d
-                self.COMPARISON_DATE = datetime.strptime(
-                    d, '%Y-%m-%d') - timedelta(days=7)
+                self.COMPARISON_DATE = datetime.strptime(d, '%Y-%m-%d') - timedelta(days=7)
             except ValueError:
                 print(
                     "This is the incorrect date string format. It should be YYYY-MM-DD")
@@ -806,6 +815,12 @@ class Application(object):
             d = datetime.now()
             self.SNAPSHOT_DATE = d.strftime('%Y-%m-%d')
             self.COMPARISON_DATE = d - timedelta(days=7)
+
+        d2 = datetime.strptime(self.SNAPSHOT_DATE, '%Y-%m-%d')
+        self.SNAPSHOT_DAY = d2.strftime('%d')
+        self.SNAPSHOT_MONTH = d2.strftime('%m')
+        self.SNAPSHOT_YEAR = d2.strftime('%Y')
+        a = 1
 
     def get_scope(self):
         # Takes arguments from the command line to identify
