@@ -180,3 +180,11 @@ class functions(object):
             s = ""
 
         return s
+
+    @staticmethod
+    def to_integer(s):
+        try:
+            v = int(s)
+        except Exception as e:
+            v = 0
+        return v

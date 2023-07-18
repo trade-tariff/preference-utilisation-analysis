@@ -12,6 +12,7 @@ class AwsBucket(object):
         self.AWS_REGION = os.getenv('AWS_REGION')
         self.AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
         self.BUCKET_NAME = os.getenv('BUCKET_NAME')
+        self.BUCKET_ALIAS = os.getenv('BUCKET_ALIAS')
         self.s3_client = boto3.client(
             's3',
             aws_access_key_id=self.AWS_ACCESS_KEY_ID,
@@ -22,8 +23,8 @@ class AwsBucket(object):
         response = self.s3_client.upload_file(source, self.BUCKET_NAME, destination)
         # self.url = "https://" + self.BUCKET_NAME + ".s3.amazonaws.com/" + destination
         self.url = "https://reporting.trade-tariff.service.gov.uk/" + destination
+        self.url = "https://" + self.BUCKET_ALIAS + "/" + destination
         return self.url
-        a = 1
 
     def delete_by_pattern(self, pattern):
         # 28-mar-2021

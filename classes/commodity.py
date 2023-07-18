@@ -15,8 +15,13 @@ class Commodity(object):
         self.hierarchy_string = ""
         self.measures = []
         self.hierarchy_sids = []
+        self.hierarchy_descriptions = []
         self.primary_third_country_duty = None
         self.supplementary_unit_string = ""
+        self.hierarchy_description_string = ""
+
+    def check_for_chapter(self):
+        self.is_chapter = True if "00000000" in self.goods_nomenclature_item_id else False
 
     def cleanse_description(self):
         if self.description is None:

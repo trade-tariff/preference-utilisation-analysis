@@ -37,6 +37,7 @@ class Application(object):
         self.STW_FILENAME = os.getenv('STW_FILENAME')
         self.GEO_FILENAME = os.getenv('GEO_FILENAME')
         self.TARIFF_DATA_BASIC = os.getenv('TARIFF_DATA_BASIC')
+        self.USE_HIERARCHICAL_DESCRIPTION = f.to_integer(os.getenv('USE_HIERARCHICAL_DESCRIPTION'))
 
         # These are only really used for testing purposes
         self.INCLUDED_MEASURES = os.getenv('INCLUDED_MEASURES')
@@ -257,6 +258,7 @@ class Application(object):
                 commodity.leaf = int(str(row[9]))
                 commodity.significant_digits = int(row[10])
                 commodity.cleanse_description()
+                commodity.check_for_chapter()
                 self.commodities.append(commodity)
 
             self.assign_measures_to_commodities()
@@ -378,7 +380,7 @@ class Application(object):
 
     def extract_data(self):
         for commodity in self.commodities:
-            if commodity.goods_nomenclature_item_id == "9931270000":
+            if commodity.goods_nomenclature_item_id == "0101291000" and commodity.productline_suffix == "80":
                 a = 1
             if commodity.goods_nomenclature_item_id not in self.hidden_goods_nomenclatures:
                 commodity.count_103s()
@@ -395,7 +397,10 @@ class Application(object):
                             self.worksheet.write(self.row_count, 1, str(commodity.goods_nomenclature_sid))
                             self.worksheet.write(self.row_count, 2, commodity.goods_nomenclature_item_id)
                             self.worksheet.write(self.row_count, 3, str(commodity.number_indents))
-                            self.worksheet.write(self.row_count, 4, commodity.description)
+                            if self.USE_HIERARCHICAL_DESCRIPTION == 1:
+                                self.worksheet.write(self.row_count, 4, commodity.hierarchy_description_string)
+                            else:
+                                self.worksheet.write(self.row_count, 4, commodity.description)
 
                             # Measure-related fields
                             self.worksheet.write(self.row_count, 5, str(measure.measure_sid))
@@ -749,17 +754,25 @@ class Application(object):
         commodity_count = len(self.commodities)
         for loop in range(0, commodity_count):
             commodity = self.commodities[loop]
+            commodity.hierarchy_descriptions.append(commodity.description)
             current_indent = commodity.number_indents
             for loop2 in range(loop - 1, -1, -1):
                 commodity2 = self.commodities[loop2]
                 if commodity2.number_indents < current_indent:
                     commodity.hierarchy.append(commodity2)
-                    commodity.hierarchy_sids.append(
-                        commodity2.goods_nomenclature_sid)
+                    commodity.hierarchy_sids.append(commodity2.goods_nomenclature_sid)
+                    if not commodity2.is_chapter:
+                        commodity.hierarchy_descriptions.append(commodity2.description)
                     current_indent = commodity2.number_indents
                 if commodity2.number_indents == -1:
                     break
+
             commodity.hierarchy.reverse()
+            commodity.hierarchy_descriptions.reverse()
+            commodity.hierarchy_description_string = " > ".join(commodity.hierarchy_descriptions)
+            if commodity.goods_nomenclature_item_id == "0101291000" and commodity.productline_suffix == "80":
+                a = 1
+            a = 1
 
         self.end_timer("Building commodity hierarchy")
 
