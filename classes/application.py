@@ -699,7 +699,7 @@ class Application(object):
         where m.measure_sid = mc.measure_sid
         and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
         and left(m.goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
-        and (m.validity_end_date is null or m.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
+        and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
         order by mc.measure_sid, mc.condition_code, mc.component_sequence_number
         """
         d = Database()
@@ -731,7 +731,7 @@ class Application(object):
         where m.measure_sid = mega.measure_sid
         and left(m.goods_nomenclature_item_id, """ + str(len(str(iteration))) + """) = '""" + str(iteration) + """'
         and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and (m.validity_end_date is null or m.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
+        and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
         and mega.excluded_geographical_area != 'EU'
         order by mega.measure_sid, mega.excluded_geographical_area;"""
         d = Database()
@@ -1074,7 +1074,7 @@ class Application(object):
         from utils.materialized_measures_real_end_dates m
         where ordernumber like '05%'
         and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and (m.validity_end_date is null or m.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
+        and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
         group by ordernumber
         order by ordernumber
         """
@@ -1124,9 +1124,9 @@ class Application(object):
         where qd.quota_order_number_sid = qon.quota_order_number_sid
         and qon.quota_order_number_sid = qono.quota_order_number_sid
         and qon.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and (qon.validity_end_date is null or qon.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
+        and (qon.validity_end_date is null or qon.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
         and qd.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and (qd.validity_end_date is null or qd.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
+        and (qd.validity_end_date is null or qd.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
         and qon.quota_order_number_id like '05%'
         group by qon.quota_order_number_sid, qon.quota_order_number_id, qd.validity_start_date, qd.validity_end_date,
         qd.initial_volume, qd.measurement_unit_code, qd.measurement_unit_qualifier_code,
@@ -1141,7 +1141,7 @@ class Application(object):
         from utils.materialized_measures_real_end_dates m
         where ordernumber like '054%'
         and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and (m.validity_end_date is null or m.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
+        and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
         group by m.ordernumber, m.validity_start_date, m.validity_end_date
         order by 2
         """
@@ -1158,9 +1158,9 @@ class Application(object):
         from quota_order_numbers qon, quota_definitions qd --, quota_order_number_origins qono
         where qd.quota_order_number_sid = qon.quota_order_number_sid
         and qon.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and (qon.validity_end_date is null or qon.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
+        and (qon.validity_end_date is null or qon.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
         and qd.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and (qd.validity_end_date is null or qd.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
+        and (qd.validity_end_date is null or qd.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
         and qon.quota_order_number_id like '05%'
         and qon.quota_order_number_id not like '054%'
         group by qon.quota_order_number_sid, qon.quota_order_number_id, qd.validity_start_date, qd.validity_end_date,
@@ -1177,7 +1177,7 @@ class Application(object):
         from utils.materialized_measures_real_end_dates m
         where ordernumber like '054%'
         and m.validity_start_date <= '""" + self.SNAPSHOT_DATE + """'
-        and (m.validity_end_date is null or m.validity_end_date > '""" + self.SNAPSHOT_DATE + """')
+        and (m.validity_end_date is null or m.validity_end_date >= '""" + self.SNAPSHOT_DATE + """')
         group by m.ordernumber, m.validity_start_date, m.validity_end_date
         order by 2
         """
